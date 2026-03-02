@@ -1,0 +1,338 @@
+{
+  "menu": [
+    {
+      "name": "Dashboards",
+      "icon": "menu-icon tf-icons ti ti-smart-home",
+      "slug": "dashboard-user",
+      "url": "/user/dashboard",
+      "permission": 1
+    },
+    {
+      "name": "Account",
+      "icon": "menu-icon tf-icons ti ti-users",
+      "slug": "user-profile",
+      "permission": 1,
+      "submenu": [
+        {
+          "url": "/user/profile",
+          "icon": "menu-icon tf-icons ti ti-user",
+          "name": "Profile",
+          "slug": "user-profile",
+          "permission": 1
+        }
+      ]
+    },
+    {
+      "name": "Masters",
+      "icon": "menu-icon tf-icons ti ti-settings",
+      "slug": "master",
+      "permission": "master-data-management",
+      "submenu": [
+        {
+          "url": "master/employment-type",
+          "name": "Employment Type",
+          "icon": "menu-icon tf-icon ti ti-badge",
+          "slug": "master-employment-type",
+          "permission": "employment-type"
+        },
+        {
+          "url": "master/designation",
+          "name": "Designation",
+          "icon": "menu-icon tf-icon ti ti-tie",
+          "slug": "master-designation",
+          "permission": "designation"
+        },
+        {
+          "url": "master/holiday",
+          "name": "Holiday",
+          "icon": "menu-icon tf-icon ti ti-badge",
+          "slug": "master-holiday",
+          "permission": "holiday"
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "icon": "menu-icon tf-icons ti ti-users",
+      "slug": "user-employee",
+      "permission": "user-management",
+      "submenu": [
+        {
+          "url": "user/employee",
+          "name": "Employee Management",
+          "icon": "menu-icon tf-icons ti ti-users",
+          "slug": "user-employee",
+          "permission": "employee-management"
+        }
+      ]
+    },
+    {
+      "name": "Payroll",
+      "icon": "menu-icon tf-icons ti ti-smart-home",
+      "slug": "payroll",
+      "permission": "payroll-list",
+      "submenu": [
+        {
+          "url": "/",
+          "icon": "menu-icon tf-icons ti ti-users",
+          "name": "Client",
+          "slug": "payroll-analytics",
+          "permission": "payroll-list"
+        },
+        {
+          "url": "/",
+          "icon": "menu-icon tf-icons ti ti-layers-intersect",
+          "name": "Project",
+          "slug": "payroll-analytics",
+          "permission": "payroll-list"
+        }
+      ]
+    },
+    {
+      "name": "Attendance Management",
+      "icon": "menu-icon tf-icons ti ti-calendar-event",
+      "slug": "attendance",
+      "permission": 1,
+      "submenu": [
+        {
+          "url": "/attendance",
+          "icon": "menu-icon tf-icons ti ti-calendar-event",
+          "name": "Attendance",
+          "slug": "attendance-index",
+          "permission": "attendance-individual-view"
+        },
+        {
+          "url": "/movement",
+          "icon": "menu-icon tf-icons ti ti-sort-ascending-2",
+          "name": "Movement",
+          "slug": "attendance-movement",
+          "permission": "movement-individual"
+        },
+        {
+          "url": "/leave/request",
+          "icon": "menu-icon tf-icons ti ti-door-exit",
+          "name": "Leave",
+          "slug": "attendance-leave-request",
+          "permission": "leave-individual-request"
+        },
+        {
+          "url": "/misspunch",
+          "icon": "menu-icon tf-icons ti ti-fingerprint",
+          "name": "Miss Punch Request",
+          "slug": "attendance-misspunch",
+          "permission": "miss-punch"
+        },
+        {
+          "url": "/attendance-management",
+          "icon": "menu-icon tf-icons ti   ti-ad-2",
+          "name": "Attendance Management",
+          "slug": "attendance-hrView",
+          "permission": "attendance-management"
+        },
+        {
+          "url": "/attendance-management",
+          "icon": "menu-icon tf-icons ti   ti-ad-2",
+          "name": "Team Attendance Management",
+          "slug": "attendance-hrView",
+          "permission": "team-attendance-management"
+        },
+        {
+          "url": "/",
+          "icon": "menu-icon tf-icons ti ti-chart-pie-2",
+          "name": "Attendance Mark",
+          "slug": "attendance-mark",
+          "permission": "movement-management"
+        }
+      ]
+    },
+    {
+      "name": "Leave Management",
+      "icon": "menu-icon tf-icons ti ti-smart-home",
+      "slug": "leave",
+      "permission": "leave-management",
+      "submenu": [
+        {
+          "url": "/leave",
+          "icon": "menu-icon tf-icons ti ti-database",
+          "name": "Leave Master",
+          "slug": "leave-master-index",
+          "permission": "leave-master"
+        },
+        {
+          "url": "/leave-assign",
+          "icon": "menu-icon tf-icons ti ti-location",
+          "name": "Leave Assign",
+          "slug": "leave-assign",
+          "permission": "leave-assign"
+        },
+        {
+          "url": "/movement/approve-list",
+          "icon": "menu-icon tf-icons ti ti-zoom-check",
+          "name": "Movement Approval",
+          "slug": "leave-movement-approve-list",
+          "permission": "leave-request-approve"
+        },
+        {
+          "url": "/leave/approve-list",
+          "icon": "menu-icon tf-icons ti ti-zoom-check",
+          "name": "Leave Approval",
+          "slug": "leave-approve-list",
+          "permission": "leave-request-approve"
+        },
+        {
+          "url": "/misspunch/approve-list",
+          "icon": "menu-icon tf-icons ti ti-zoom-check",
+          "name": "Misspunch Approval",
+          "slug": "leave-misspunch-approve-list",
+          "permission": "leave-request-approve"
+        }
+      ]
+    },
+    {
+      "name": "Client Management",
+      "icon": "menu-icon tf-icons ti ti-smart-home",
+      "slug": "user-project",
+      "permission": "client-create",
+      "submenu": [
+        {
+          "url": "client/list",
+          "icon": "menu-icon tf-icons ti ti-users",
+          "name": "Create Client",
+          "slug": "client-list",
+          "permission": "client-create"
+        }
+      ]
+    },
+    {
+      "name": "Project Management",
+      "icon": "menu-icon tf-icons ti ti-smart-home",
+      "slug": "pms",
+      "permission": 1,
+      "submenu": [
+        {
+          "url": "pms/employees/projects",
+          "name": "Employee Management",
+          "icon": "menu-icon tf-icons ti ti-users",
+          "slug": "pms-employee-management",
+          "permission": 1
+        }
+      ]
+    },
+    {
+      "name": "Assets",
+      "icon": "menu-icon tf-icons ti ti-box",
+      "slug": "assets",
+      "permission": "asset-management",
+      "submenu": [
+        {
+          "url": "asset/my-assets",
+          "name": "My Assets",
+          "icon": "menu-icon tf-icons ti ti-user-check",
+          "slug": "asset-my-assets",
+          "permission": 1
+        },
+        {
+          "url": "asset/masters",
+          "name": "Asset Master",
+          "icon": "menu-icon tf-icons ti ti-building",
+          "slug": "asset-masters",
+          "permission": "asset-management"
+        },
+        {
+          "url": "asset/categories",
+          "name": "Category",
+          "icon": "menu-icon tf-icons ti ti-category",
+          "slug": "asset-categories",
+          "permission": "asset-management"
+        },
+        {
+          "url": "asset/vendors",
+          "name": "Vendor",
+          "icon": "menu-icon tf-icons ti ti-truck",
+          "slug": "asset-vendors",
+          "permission": "asset-management"
+        },
+        {
+          "url": "asset/brands",
+          "name": "Maker",
+          "icon": "menu-icon tf-icons ti ti-tag",
+          "slug": "asset-brands",
+          "permission": "asset-management"
+        },
+        {
+          "url": "asset/allocations/create",
+          "name": "Asset Issue",
+          "icon": "menu-icon tf-icons ti ti-share",
+          "slug": "asset-issue",
+          "permission": "asset-management"
+        },
+        {
+          "url": "asset/reports/register",
+          "name": "Asset Register",
+          "icon": "menu-icon tf-icons ti ti-file-text",
+          "slug": "asset-register-report",
+          "permission": "asset-management"
+        }
+      ]
+    },
+    {
+      "name": "Tapals",
+      "icon": "menu-icon tf-icons ti ti-comment",
+      "slug": "tapals",
+      "permission": 1,
+      "submenu": [
+        {
+          "url": "/tapals",
+          "icon": "menu-icon tf-icons ti ti-comment",
+          "name": "My Tapals",
+          "slug": "tapals",
+          "permission": 1
+        },
+        {
+          "url": "/tapal/tracing",
+          "icon": "menu-icon tf-icons ti ti-search",
+          "name": "Tapals Tracing",
+          "slug": "tapal-tracing",
+          "permission": "tapal-tracing"
+        }
+      ]
+    },
+    {
+      "name": "Bookings ",
+      "icon": "menu-icon tf-icons ti ti-calendar",
+      "slug": "calendar",
+      "permission": 1,
+      "submenu": [
+        {
+          "url": "/calendar",
+          "icon": "menu-icon tf-icons ti ti-home",
+          "name": "Hall Booking",
+          "slug": "calendar",
+          "permission": 1
+        }
+      ]
+    },
+    {
+      "name": "Documents ",
+      "icon": "menu-icon tf-icons ti ti-calendar",
+      "slug": "documents",
+      "permission": 1,
+      "submenu": [
+        {
+          "url": "/documents",
+          "icon": "menu-icon tf-icons ti ti-home",
+          "name": "Generate Number",
+          "slug": "documents",
+          "permission": 1
+        },
+        {
+          "url": "/document/tracking",
+          "icon": "menu-icon tf-icons ti ti-search",
+          "name": "Document Tracking",
+          "slug": "document-tracking",
+          "permission": 1
+        }
+      ]
+    }
+  ]
+}

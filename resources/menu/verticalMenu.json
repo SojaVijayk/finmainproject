@@ -1,0 +1,167 @@
+{
+  "menu": [
+    {
+      "name": "Dashboards",
+      "icon": "menu-icon tf-icons ti ti-smart-home",
+      "slug": "dashboard",
+      "url": "dashboard"
+    },
+    {
+      "menuHeader": "App Configurations"
+    },
+    {
+      "name": "Roles & Permissions",
+      "icon": "menu-icon tf-icons ti ti-settings",
+      "slug": "app",
+      "submenu": [
+        {
+          "url": "app/roles",
+          "name": "Roles",
+          "slug": "app-roles"
+        },
+        {
+          "url": "app/permission",
+          "name": "Permission",
+          "slug": "app-permission"
+        }
+      ]
+    },
+    {
+      "name": "Masters",
+      "icon": "menu-icon tf-icons ti ti-settings",
+      "slug": "master",
+      "submenu": [
+        {
+          "url": "master/employment-type",
+          "name": "Employment Type",
+          "slug": "master-employment-type"
+        },
+        {
+          "url": "master/designation",
+          "name": "Designation",
+          "slug": "master-designation"
+        },
+        {
+          "url": "geneateHoliday",
+          "name": "Geneate Holiday",
+          "slug": "generate-holiday"
+        },
+        {
+          "url": "master/holiday",
+          "name": "Holiday Management",
+          "slug": "master-holiday"
+        }
+      ]
+    },
+    {
+      "menuHeader": "Employee Management"
+    },
+    {
+      "name": "Project Management",
+      "icon": "menu-icon tf-icons ti ti-smart-home",
+      "slug": "pms",
+      "permission": 1,
+      "submenu": [
+        {
+          "url": "pms/employees/projects",
+          "name": "Employee Management",
+          "icon": "menu-icon tf-icons ti ti-users",
+          "slug": "pms-employee-management",
+          "permission": 1
+        }
+      ]
+    },
+    {
+      "name": "Clients",
+      "icon": "menu-icon tf-icons ti ti-users",
+      "slug": "client",
+      "submenu": [
+        {
+          "url": "client/list",
+          "name": "Client List",
+          "slug": "client-list"
+        }
+      ]
+    },
+    {
+      "menuHeader": "Asset Management"
+    },
+    {
+      "name": "Assets",
+      "icon": "menu-icon tf-icons ti ti-box",
+      "slug": "asset",
+      "submenu": [
+        {
+          "url": "asset/departments",
+          "name": "Departments",
+          "slug": "asset-departments"
+        },
+        {
+          "url": "asset/categories",
+          "name": "Categories",
+          "slug": "asset-categories"
+        },
+        {
+          "url": "asset/vendors",
+          "name": "Vendors",
+          "slug": "asset-vendors"
+        },
+        {
+          "url": "asset/brands",
+          "name": "Brands",
+          "slug": "asset-brands"
+        },
+        {
+          "url": "asset/masters",
+          "name": "Department Assets",
+          "slug": "asset-masters"
+        },
+        {
+          "url": "asset/my-assets",
+          "name": "My Assets",
+          "slug": "asset-my-assets"
+        },
+        {
+          "url": "asset/reports/register",
+          "name": "Reports",
+          "slug": "asset-reports"
+        },
+        {
+          "url": "asset/locations",
+          "name": "Locations",
+          "slug": "asset-locations",
+          "permission": 1
+        },
+        {
+          "url": "asset/floors",
+          "name": "Floors",
+          "slug": "asset-floors",
+          "permission": 1
+        },
+        {
+          "url": "asset/rooms",
+          "name": "Rooms",
+          "slug": "asset-rooms",
+          "permission": 1
+        }
+      ]
+    },
+    {
+      "menuHeader": "Help"
+    },
+    {
+      "url": "https://pixinvent.ticksy.com/",
+      "icon": "menu-icon tf-icons ti ti-lifebuoy",
+      "name": "Support",
+      "slug": "support",
+      "target": "_blank"
+    },
+    {
+      "url": "https://demos.pixinvent.com/vuexy-html-admin-template/documentation/laravel-introduction.html",
+      "icon": "menu-icon tf-icons ti ti-file-description",
+      "name": "Documentation",
+      "slug": "documentation",
+      "target": "_blank"
+    }
+  ]
+}

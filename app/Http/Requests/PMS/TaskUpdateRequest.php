@@ -1,0 +1,26 @@
+<?php
+
+namespace App\Http\Requests\PMS;
+
+use Illuminate\Foundation\Http\FormRequest;
+
+class TaskUpdateRequest extends FormRequest
+{
+    public function authorize()
+    {
+        return true;
+    }
+
+    public function rules()
+    {
+        return [
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+            'priority' => 'required|in:1,2,3',
+            'assigned_to' => 'required|array|min:1',
+            'assigned_to.*' => 'exists:users,id',
+        ];
+    }
+}

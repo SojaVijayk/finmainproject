@@ -1,0 +1,9 @@
+--- Checking sraya ---
+PID: EMP-1770634346230 | Name: sraya
+ID: 19 | Pay: 2000.00 | Start: 2026-02-01 | End: 2026-02-11 | Status: 0 | EmpType: Full Time
+ID: 35 | Pay: 73455.00 | Start: 2026-02-11 | End: 2026-02-10 | Status: 0 | EmpType: Full Time
+ID: 36 | Pay: 90000.00 | Start: 2026-01-01 | End: 2026-02-06 | Status: 1 | EmpType: Full Time
+--- Checking anjana ---
+PID: EMP-1770393980796 | Name: anjana
+ID: 10 | Pay: 60000.00 | Start: 2026-02-01 | End: 2026-02-28 | Status: 0 | EmpType: Full Time
+ID: 17 | Pay: 80000.00 | Start: 2026-01-01 | End: 2026-02-10 | Status: 1 | EmpType: Full Time

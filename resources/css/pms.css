@@ -1,0 +1,149 @@
+/* Status badge colors */
+.badge.bg-initiated {
+    background-color: #6c757d;
+    color: white;
+}
+
+.badge.bg-ongoing {
+    background-color: #0d6efd;
+    color: white;
+}
+
+.badge.bg-completed {
+    background-color: #198754;
+    color: white;
+}
+
+.badge.bg-created {
+    background-color: #6c757d;
+    color: white;
+}
+
+.badge.bg-sent {
+    background-color: #0dcaf0;
+    color: black;
+}
+
+.badge.bg-approved {
+    background-color: #198754;
+    color: white;
+}
+
+.badge.bg-rejected {
+    background-color: #dc3545;
+    color: white;
+}
+
+.badge.bg-returned {
+    background-color: #fd7e14;
+    color: black;
+}
+
+/* Priority badge colors */
+.badge.bg-low {
+    background-color: #6c757d;
+    color: white;
+}
+
+.badge.bg-medium {
+    background-color: #ffc107;
+    color: black;
+}
+
+.badge.bg-high {
+    background-color: #dc3545;
+    color: white;
+}
+
+/* Invoice status badge colors */
+.badge.bg-draft {
+    background-color: #6c757d;
+    color: white;
+}
+
+.badge.bg-sent {
+    background-color: #0dcaf0;
+    color: black;
+}
+
+.badge.bg-paid {
+    background-color: #198754;
+    color: white;
+}
+
+.badge.bg-overdue {
+    background-color: #fd7e14;
+    color: black;
+}
+
+.badge.bg-cancelled {
+    background-color: #dc3545;
+    color: white;
+}
+
+/* Custom card styles */
+.card {
+    margin-bottom: 1.5rem;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.card-header {
+    padding: 0.75rem 1.25rem;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+}
+
+/* Table styles */
+.table-responsive {
+    overflow-x: auto;
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(0, 0, 0, 0.025);
+}
+
+/* Form styles */
+.form-select {
+    padding: 0.375rem 2.25rem 0.375rem 0.75rem;
+}
+
+/* Progress bar styles */
+.progress {
+    height: 1.5rem;
+}
+
+.progress-bar {
+    transition: width 0.6s ease;
+}
+
+/* Custom spacing */
+.mt-6 {
+    margin-top: 4rem;
+}
+
+.mb-6 {
+    margin-bottom: 4rem;
+}
+
+/* FullCalendar overrides */
+.fc .fc-toolbar-title {
+    font-size: 1.25rem;
+}
+
+.fc .fc-button {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .fc-toolbar.fc-header-toolbar {
+        display: block;
+        text-align: center;
+    }
+    
+    .fc-toolbar.fc-header-toolbar .fc-toolbar-chunk {
+        display: block;
+        margin-bottom: 0.5rem;
+    }
+}

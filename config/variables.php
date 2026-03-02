@@ -1,0 +1,37 @@
+<?php
+
+// Variables
+return [
+  "creatorName" => "Centre for Management Development",
+  "creatorUrl" => "https://cmd.kerala.gov.in",
+  "templateName" => "CMD SUITE",
+  "templateSuffix" => "Complete ERP Solution for CMD",
+  "templateVersion" => "1.0.0",
+  "templateFree" => false,
+  "templateDescription" => "CMD Trivandrum ERP: Streamlining Operations for Excellence",
+  "templateKeyword" => "dashboard, bootstrap 5 dashboard, bootstrap 5 design, bootstrap 5",
+  "licenseUrl" => "https://themeforest.net/licenses/standard",
+  "livePreview" => "https://demos.pixinvent.com/vuexy-html-admin-template/landing/",
+  "productPage" => "https://1.envato.market/vuexy_admin",
+  // "support" => "https://pixinvent.ticksy.com/",
+  "support" => "",
+  // "moreThemes" => "https://1.envato.market/pixinvent_portfolio",
+  "moreThemes" => "",
+  // "documentation" => "https://demos.pixinvent.com/vuexy-html-admin-template/documentation/laravel-introduction.html",
+  "documentation" => "",
+  "generator" => "",
+  "changelog" => "https://demos.pixinvent.com/vuexy/changelog.html",
+  "repository" => "https://github.com/pixinvent/vuexy-html-admin-template",
+  "gitRepo" => "pixinvent",
+  "gitRepoAccess" => "vuexy-html-admin-template",
+  "githubFreeUrl" => "https://tools.pixinvent.com/github/github-access",
+  "facebookUrl" => "https://www.facebook.com/cmdkerala/",
+  "twitterUrl" => "https://twitter.com/",
+  "githubUrl" => "https://github.com/",
+  "dribbbleUrl" => "https://dribbble.com/",
+  "instagramUrl" => "https://www.instagram.com/cmdkerala/",
+  "login1"=>"https://assets1.lottiefiles.com/packages/lf20_xlmz9xwm.json",
+  "login2"=>"https://assets1.lottiefiles.com/packages/lf20_xlmz9xwm.json",
+  "login3"=>"https://assets5.lottiefiles.com/packages/lf20_Xx30GI58E1.json",
+  "coming-soon"=>"https://lottie.host/94462664-0628-4c20-8879-291d9b787d51/6XLtpo6VVJ.json"
+];
