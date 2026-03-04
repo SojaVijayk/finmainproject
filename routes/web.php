@@ -692,6 +692,7 @@ Route::group(['middleware' => 'auth'], function () {
       // Deduction Master
       Route::get('/deduction-master/{project_id?}', [DeductionMasterController::class, 'index'])->name('deduction-master.index');
       Route::post('/deduction-master/select-employees/{project_id?}', [DeductionMasterController::class, 'selectEmployees'])->name('deduction-master.select-employees');
+      Route::post('/deduction-master/store/{project_id?}', [DeductionMasterController::class, 'storeDeductions'])->name('deduction-master.store');
 
       // Requirements
       Route::get('requirements/master-list', [RequirementController::class, 'masterList'])->name(

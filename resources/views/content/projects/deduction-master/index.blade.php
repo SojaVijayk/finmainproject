@@ -1,6 +1,6 @@
 @extends('layouts/layoutMaster')
 
-@section('title', 'Deduction Master - Selection')
+@section('title', 'Deduction Master - Active Employees')
 
 @section('content')
 <h4 class="fw-bold py-3 mb-4">
@@ -8,51 +8,64 @@
 </h4>
 
 <div class="row">
-  <div class="col-md-6 mx-auto">
-    <div class="card mb-4">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">Step 1: Selection</h5>
-        <small class="text-muted float-end">Deduction Period & Type</small>
-      </div>
-      <div class="card-body">
-        <form action="{{ route('pms.deduction-master.select-employees', $project_id) }}" method="POST">
-          @csrf
-          <div class="mb-3">
-            <label class="form-label" for="month">Select Month</label>
-            <select id="month" name="month" class="form-select" required>
-              @foreach($months as $month)
-                <option value="{{ $month }}" {{ $month == date('F') ? 'selected' : '' }}>{{ $month }}</option>
-              @endforeach
-            </select>
-          </div>
-          <div class="mb-3">
-            <label class="form-label" for="year">Select Year</label>
-            <select id="year" name="year" class="form-select" required>
-              @foreach($years as $year)
-                <option value="{{ $year }}">{{ $year }}</option>
-              @endforeach
-            </select>
-          </div>
-          <div class="mb-3">
-            <label class="form-label" for="employment_type">Employment Type</label>
-            <select id="employment_type" name="employment_type" class="form-select" required>
-              <option value="">Select Type</option>
-              @foreach($employmentTypes as $type)
-                <option value="{{ $type }}">{{ ucfirst($type) }}</option>
-              @endforeach
-            </select>
-          </div>
-          <div class="mb-3">
-            <label class="form-label" for="default_salary_id">Salary ID / Batch Reference (Required)</label>
-            <input type="text" id="default_salary_id" name="default_salary_id" class="form-control" placeholder="e.g. SAL-FEB-2024" required>
-            <div class="form-text">This value will be used to identify the deduction batch.</div>
-          </div>
-          <div class="text-center">
-            <button type="submit" class="btn btn-primary d-grid w-100">Confirm & Continue</button>
-          </div>
-        </form>
-      </div>
+    <div class="col-12">
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Active Frozen Employees</h5>
+            </div>
+            <div class="card-body">
+                @if($frozenPayrolls->isEmpty())
+                    <div class="alert alert-warning" role="alert">
+                        No frozen employees available for deduction processing. Please freeze employees in Salary Management first.
+                    </div>
+                @else
+                    <form action="{{ route('pms.deduction-master.select-employees', $project_id) }}" method="POST">
+                        @csrf
+                        <div class="table-responsive text-nowrap mt-3">
+                            <table class="table table-bordered table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Month</th>
+                                        <th>Year</th>
+                                        <th>Employment Type</th>
+                                        <th>Salary ID</th>
+                                        <th>Net Salary (Base)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach($frozenPayrolls as $record)
+                                        <tr>
+                                            <td class="fw-semibold text-primary">{{ $record->name }}</td>
+                                            <td>{{ $record->paymonth }}</td>
+                                            <td>{{ $record->year }}</td>
+                                            <td><span class="badge bg-label-info">{{ $record->employment_type }}</span></td>
+                                            <td><span class="badge bg-label-secondary">{{ $record->salary_id }}</span></td>
+                                            <td class="text-end fw-semibold">₹{{ number_format((float)($record->net_salary ?? 0), 2) }}</td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <!-- Passing the first active combination implicitly so the next step controller continues to work unmodified -->
+                        @php
+                            $firstRecord = $frozenPayrolls->first();
+                        @endphp
+                        <input type="hidden" name="month" value="{{ $firstRecord->paymonth }}">
+                        <input type="hidden" name="year" value="{{ $firstRecord->year }}">
+                        <input type="hidden" name="employment_type" value="{{ $firstRecord->employment_type }}">
+                        <input type="hidden" name="default_salary_id" value="{{ $firstRecord->salary_id }}">
+
+                        <div class="mt-4 text-end">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="ti ti-edit me-1"></i> Proceed to Edit Deductions
+                            </button>
+                        </div>
+                    </form>
+                @endif
+            </div>
+        </div>
     </div>
-  </div>
 </div>
 @endsection

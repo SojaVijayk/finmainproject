@@ -11,53 +11,37 @@ class DeductionMasterController extends Controller
     {
         $pageConfigs = ['myLayout' => 'horizontal'];
         
-        $employmentTypes = [
-            'Apprentice', 'Daily Wages', 'Interns', 'Contract', 
-            'Full Time', 'Part Time', 'Freelance', 'Temporary', 'Permanent', 'Deputation'
-        ];
-            
-        $years = range(date('Y'), date('Y') - 5);
-        $months = [
-            'January', 'February', 'March', 'April', 'May', 'June',
-            'July', 'August', 'September', 'October', 'November', 'December'
-        ];
+        // Fetch ALL frozen payroll records across all months/years/types
+        $frozenPayrolls = \DB::table('employee_payroll')
+            ->join('project_employee', 'project_employee.p_id', '=', 'employee_payroll.p_id')
+            ->join('service', 'service.p_id', '=', 'employee_payroll.p_id')
+            ->where('employee_payroll.is_frozen', 1)
+            ->select(
+                'employee_payroll.*',
+                'project_employee.name',
+                'service.employment_type'
+            )
+            ->distinct()
+            ->orderBy('employee_payroll.year', 'desc')
+            ->orderBy('employee_payroll.paymonth', 'desc')
+            ->get();
 
-        return view('content.projects.deduction-master.index', compact('employmentTypes', 'years', 'months', 'pageConfigs', 'project_id'));
+        // The user wants to see specifically: Name, Month, Year, Employment Type, and Salary ID.
+        // We will pass this structured payload back to the index view.
+
+        return view('content.projects.deduction-master.index', compact('frozenPayrolls', 'pageConfigs', 'project_id'));
     }
 
     public function selectEmployees(Request $request, $project_id = null)
     {
         $pageConfigs = ['myLayout' => 'horizontal'];
-        $month = $request->month;
-        $year = $request->year;
-        $employmentType = $request->employment_type;
-        $salaryId = $request->default_salary_id;
 
-        // Calculate Month Start and End for overlapping service fetch
-        $mStart = \Carbon\Carbon::parse("1 $month $year")->startOfMonth();
-        $mEnd = \Carbon\Carbon::parse("1 $month $year")->endOfMonth();
-        $monthStartStr = $mStart->format('Y-m-d');
-        $monthEndStr = $mEnd->format('Y-m-d');
-
-        // Fetch all service records that overlap with this month for the given employment type
-        $overlappingServices = \App\Models\Service::where('employment_type', $employmentType)
-            ->where('start_date', '<=', $monthEndStr)
-            ->where(function($q) use ($monthStartStr) {
-                $q->where('end_date', '>=', $monthStartStr)
-                  ->orWhereNull('end_date');
-            })
-            ->get();
-
-        $validPIds = $overlappingServices->pluck('p_id')->unique()->toArray();
-
-        // Fetch frozen payroll records for those valid P_IDs
+        // Fetch ALL frozen payroll records, joining with service and project_employee to get all necessary details
         $frozenPayrolls = \DB::table('employee_payroll')
             ->join('project_employee', 'project_employee.p_id', '=', 'employee_payroll.p_id')
             ->leftJoin('designations', 'designations.id', '=', 'project_employee.designation_id')
-            ->whereIn('employee_payroll.p_id', $validPIds)
-            ->where('employee_payroll.paymonth', $month)
-            ->where('employee_payroll.year', $year)
-            ->where('employee_payroll.is_frozen', 1) // Only show frozen records
+            ->leftJoin('service', 'service.p_id', '=', 'employee_payroll.p_id')
+            ->where('employee_payroll.is_frozen', 1)
             ->select(
                 'employee_payroll.*',
                 'project_employee.name',
@@ -65,12 +49,52 @@ class DeductionMasterController extends Controller
                 'project_employee.account_no',
                 'project_employee.ifsc_code',
                 'project_employee.branch',
-                'designations.designation'
+                'designations.designation',
+                'service.employment_type'
             )
+            // Ensure we use the latest service record for each employee to prevent duplicates
+            ->whereRaw('service.id = (SELECT MAX(id) FROM service WHERE service.p_id = employee_payroll.p_id)')
+            ->orderBy('employee_payroll.year', 'desc')
+            ->orderBy('employee_payroll.paymonth', 'desc')
             ->get();
 
         return view('content.projects.deduction-master.select-employees', compact(
-            'frozenPayrolls', 'month', 'year', 'employmentType', 'salaryId', 'pageConfigs', 'project_id'
+            'frozenPayrolls', 
+            'pageConfigs', 
+            'project_id'
         ));
+    }
+    public function storeDeductions(Request $request, $project_id = null)
+    {
+        if (!$request->has('p_id')) {
+            return redirect()->back()->with('error', 'No employees found to update.');
+        }
+
+        foreach ($request->p_id as $pId) {
+            // Get the specific context for this row from the new array inputs
+            $rowMonth = $request->months[$pId] ?? null;
+            $rowYear = $request->years[$pId] ?? null;
+
+            if (!$rowMonth || !$rowYear) {
+                continue; // Cannot update without exact period context
+            }
+
+            \DB::table('employee_payroll')
+                ->where('p_id', $pId)
+                ->where('paymonth', $rowMonth)
+                ->where('year', $rowYear)
+                ->update([
+                    'tds_192_b' => $request->tds_192_b[$pId] ?? 0,
+                    'tds_194_j' => $request->tds_194_j[$pId] ?? 0,
+                    'professional_tax' => $request->professional_tax[$pId] ?? 0,
+                    'esi_employer' => $request->esi_employer[$pId] ?? 0,
+                    'lic_others' => $request->lic_others[$pId] ?? 0,
+                    'festival_allowance' => $request->festival_allowance[$pId] ?? 0,
+                    'net_salary' => $request->calculated_net_salary[$pId] ?? 0,
+                    'total_deductions' => $request->calculated_total_deductions[$pId] ?? 0,
+                ]);
+        }
+
+        return redirect()->route('pms.deduction-master.index', $project_id)->with('success', 'Deductions successfully updated and Net Salary recalculated!');
     }
 }
