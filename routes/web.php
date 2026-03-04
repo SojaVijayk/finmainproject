@@ -24,6 +24,7 @@ use App\Http\Controllers\PMS\ExpenseCategoryController;
 use App\Http\Controllers\PMS\VendorController;
 use App\Http\Controllers\PMS\AttachmentController;
 use App\Http\Controllers\Project\ProjectEmployeeController;
+use App\Http\Controllers\Project\DeductionMasterController;
 use App\Http\Controllers\CertificateController;
 
 use App\Exports\ProjectsExport;
@@ -687,6 +688,10 @@ Route::group(['middleware' => 'auth'], function () {
       Route::post('/employees/update-service/{p_id}', [ProjectEmployeeController::class, 'updateService'])->name('employees.update-service');
       Route::post('/employees/update-salary/{p_id}', [ProjectEmployeeController::class, 'updateSalary'])->name('employees.update-salary');
       Route::post('/employees/update-deduction/{p_id}', [ProjectEmployeeController::class, 'updateDeduction'])->name('employees.update-deduction');
+
+      // Deduction Master
+      Route::get('/deduction-master/{project_id?}', [DeductionMasterController::class, 'index'])->name('deduction-master.index');
+      Route::post('/deduction-master/select-employees/{project_id?}', [DeductionMasterController::class, 'selectEmployees'])->name('deduction-master.select-employees');
 
       // Requirements
       Route::get('requirements/master-list', [RequirementController::class, 'masterList'])->name(

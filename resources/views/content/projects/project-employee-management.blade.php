@@ -716,6 +716,9 @@ document.addEventListener('DOMContentLoaded', function () {
   <div class="card-header border-bottom d-flex justify-content-between align-items-center">
     <h5 class="card-title mb-0">Employee Management</h5>
     <div class="d-flex gap-2">
+      <a href="{{ route('pms.deduction-master.index', $project_details->id ?? '') }}" class="btn btn-label-secondary" title="Deduction Master">
+        <i class="ti ti-receipt-2 me-1 ti-xs"></i> Deduction Master
+      </a>
       <a href="{{ route('pms.salary-management.index', $project_details->id ?? '') }}" class="btn btn-label-primary">
         <i class="ti ti-currency-dollar me-1 ti-xs"></i> Salary Management
       </a>
