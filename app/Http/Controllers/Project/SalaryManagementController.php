@@ -226,17 +226,36 @@ class SalaryManagementController extends Controller
             }
         }
 
-        // Fetch is_frozen status for the calculation view
+        // Fetch full payroll data for the calculation view
         $payrolls = \DB::table('employee_payroll')
             ->whereIn('p_id', $pIds)
             ->where('paymonth', $month)
             ->where('year', $year)
-            ->select('p_id', 'is_frozen')
             ->get()
             ->keyBy('p_id');
 
         foreach ($employees as $employee) {
-            $employee->is_frozen = $payrolls->has($employee->p_id) ? $payrolls->get($employee->p_id)->is_frozen : 0;
+            if ($payrolls->has($employee->p_id)) {
+                $payroll = $payrolls->get($employee->p_id);
+                $employee->is_frozen = $payroll->is_frozen;
+                $employee->salary_id = $payroll->salary_id;
+                $employee->total_working_days = $payroll->total_working_days;
+                $employee->days_worked = $payroll->days_worked;
+                $employee->cl_days = $payroll->cl_days;
+                $employee->sl_days = $payroll->sl_days;
+                $employee->pl_days = $payroll->pl_days;
+                $employee->lop_days = $payroll->lop_days;
+                $employee->other_leave_days = $payroll->other_leave_days;
+                $employee->gross_salary = $payroll->gross_salary;
+                $employee->net_salary = $payroll->net_salary;
+                $employee->pf = $payroll->pf;
+                $employee->employer_contribution = $payroll->employer_contribution;
+                $employee->epf_employers_share = $payroll->epf_employers_share;
+                $employee->edli_charges = $payroll->edli_charges;
+                $employee->arrear = $payroll->other_allowance;
+            } else {
+                $employee->is_frozen = 0;
+            }
         }
 
         return view('content.projects.salary-management.calculation', compact('employees', 'month', 'year', 'employmentType', 'pageConfigs', 'project_id', 'defaultSalaryId', 'totalDays', 'actualDaysInMonth'));

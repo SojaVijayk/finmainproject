@@ -20,6 +20,7 @@ class ProjectEmployee extends Model
         'last_name',
         'email',
         'mobile',
+        'pan_number',
         'age',
         'dob',
         'address',
@@ -61,6 +62,16 @@ class ProjectEmployee extends Model
     public function deduction()
     {
         return $this->hasOne(Deduction::class, 'p_id', 'p_id');
+    }
+
+    public function deductionMaster()
+    {
+        return $this->hasOne(DeductionMaster::class, 'p_id', 'p_id');
+    }
+
+    public function dynamicDeductions()
+    {
+        return $this->hasMany(EmployeeDynamicDeduction::class, 'p_id', 'p_id');
     }
 
     public function designation()

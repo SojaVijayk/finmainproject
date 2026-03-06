@@ -624,6 +624,7 @@ document.addEventListener('DOMContentLoaded', function () {
         $('#wizard_name').val(data.name);
         $('#wizard_email').val(data.email);
         $('#wizard_mobile').val(data.mobile);
+        $('#wizard_pan_number').val(data.pan_number);
         $('#wizard_age').val(data.age);
         $('#wizard_dob').val(data.dob);
         $('#wizard_joining_date').val(data.date_of_joining);
@@ -716,6 +717,9 @@ document.addEventListener('DOMContentLoaded', function () {
   <div class="card-header border-bottom d-flex justify-content-between align-items-center">
     <h5 class="card-title mb-0">Employee Management</h5>
     <div class="d-flex gap-2">
+      <a href="{{ route('pms.pay-item-master.index', $project_details->id ?? '') }}" class="btn btn-label-secondary" title="Pay Item Master">
+        <i class="ti ti-settings me-1 ti-xs"></i> Pay Item Master
+      </a>
       <a href="{{ route('pms.deduction-master.index', $project_details->id ?? '') }}" class="btn btn-label-secondary" title="Deduction Master">
         <i class="ti ti-receipt-2 me-1 ti-xs"></i> Deduction Master
       </a>
@@ -771,6 +775,10 @@ document.addEventListener('DOMContentLoaded', function () {
           <label class="form-label" for="empId">Employee ID</label>
           <input type="text" id="empId" class="form-control " placeholder="XXX" aria-label="john.doe@example.com" name="empId" />
         </div>
+        <div class="mb-3">
+          <label class="form-label" for="pan_number">PAN Number</label>
+          <input type="text" id="pan_number" class="form-control" placeholder="ABCDE1234F" name="pan_number" style="text-transform: uppercase;" />
+        </div>
 
         <button type="submit" class="btn btn-primary me-sm-3 me-1 data-submit">Submit</button>
         <button type="reset" class="btn btn-label-secondary" data-bs-dismiss="offcanvas">Cancel</button>
@@ -813,6 +821,10 @@ document.addEventListener('DOMContentLoaded', function () {
                   <div class="col-sm-6">
                     <label class="form-label" for="mobile">Mobile</label>
                     <input type="text" id="wizard_mobile" name="mobile" class="form-control phone-mask" placeholder="1234567890" required />
+                  </div>
+                  <div class="col-sm-6">
+                    <label class="form-label" for="wizard_pan_number">PAN Number</label>
+                    <input type="text" id="wizard_pan_number" name="pan_number" class="form-control" placeholder="ABCDE1234F" style="text-transform: uppercase;" />
                   </div>
                   <div class="col-sm-6">
                     <label class="form-label" for="dob">Date of Birth</label>

@@ -12,6 +12,11 @@
         <div class="card mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">Active Frozen Employees</h5>
+                <div class="d-flex gap-2">
+                    <a href="{{ route('pms.pay-item-master.index', $project_id ?? '') }}" class="btn btn-label-secondary btn-sm" title="Pay Item Master">
+                        <i class="ti ti-settings me-1 ti-xs"></i> Pay Item Master
+                    </a>
+                </div>
             </div>
             <div class="card-body">
                 @if($frozenPayrolls->isEmpty())
@@ -41,7 +46,17 @@
                                             <td>{{ $record->year }}</td>
                                             <td><span class="badge bg-label-info">{{ $record->employment_type }}</span></td>
                                             <td><span class="badge bg-label-secondary">{{ $record->salary_id }}</span></td>
-                                            <td class="text-end fw-semibold">₹{{ number_format((float)($record->net_salary ?? 0), 2) }}</td>
+                                            @php
+                                                $twd = (float)($record->total_working_days ?? 0);
+                                                $dw = (float)($record->days_worked ?? 0);
+                                                $gs = (float)($record->gross_salary ?? 0);
+                                                $arr = (float)($record->other_allowance ?? 0);
+                                                $epf_s = (float)($record->epf_employers_share ?? 0);
+                                                $edli_s = (float)($record->edli_charges ?? 0);
+                                                $prorated = ($twd > 0) ? ($gs / $twd) * $dw : $gs;
+                                                $computedNet = $prorated + $arr + $epf_s + $edli_s;
+                                            @endphp
+                                            <td class="text-end fw-semibold">₹{{ number_format($computedNet, 2) }}</td>
                                         </tr>
                                     @endforeach
                                 </tbody>

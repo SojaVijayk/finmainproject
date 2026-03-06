@@ -10,13 +10,15 @@
 <div class="card mb-4">
     <div class="card-header border-bottom d-flex justify-content-between align-items-center">
         <div>
-            <h5 class="card-title mb-0">Step 2: Frozen Employee List</h5>
             <h5 class="card-title mb-0">Step 2: Edit Deductions</h5>
             <small class="text-muted">
-                Displaying all active frozen employees across all months.
+                Displaying all active frozen employees across all months. Only deductions enabled in the employee's Deduction Master profile are shown as editable.
             </small>
         </div>
         <div>
+             <a href="{{ route('pms.pay-item-master.index', $project_id ?? '') }}" class="btn btn-label-primary me-2">
+                <i class="ti ti-settings me-1"></i> Pay Item Master
+            </a>
              <a href="{{ route('pms.deduction-master.index', $project_id) }}" class="btn btn-label-secondary">
                 <i class="ti ti-arrow-left me-1"></i> Back
             </a>
@@ -32,7 +34,6 @@
         @else
             <form action="{{ route('pms.deduction-master.store', $project_id) }}" method="POST">
                 @csrf
-                <!-- Hidden inputs for Month/Year removed as they are now row-specific -->
                 
                 <div class="table-responsive text-nowrap">
                     <table class="table table-bordered table-hover">
@@ -46,22 +47,23 @@
                             <th>Account No.</th>
                             <th>IFSC Code</th>
                             <th>Branch</th>
-                            <th style="width: 100px;">CL</th>
-                            <th style="width: 100px;">SL</th>
-                            <th style="width: 100px;">PL</th>
-                            <th style="width: 100px;">LOP</th>
-                            <th style="width: 120px;">EPF Employers share @ 12%</th>
-                            <th style="width: 120px;">EDLI contribution and admin</th>
-                            <th style="width: 100px;">PF</th>
+                            <th style="width: 80px;">CL</th>
+                            <th style="width: 80px;">SL</th>
+                            <th style="width: 80px;">PL</th>
+                            <th style="width: 80px;">LOP</th>
                             <th style="width: 100px;">Employer Contribution</th>
                             <th style="width: 100px;">Arrear (+)</th>
-                            <th style="width: 100px;">Other</th>
-                            <th style="width: 150px;">TDS 192 B</th>
-                            <th style="width: 150px;">TDS 194 J</th>
-                            <th style="width: 150px;">PROFESSIONAL TAX</th>
-                            <th style="width: 150px;">ESI EMPLOYER</th>
-                            <th style="width: 150px;">LIC</th>
-                            <th style="width: 150px;">Festival Allowance</th>
+                            <th style="width: 180px;">TDS</th>
+                            <th style="width: 180px;">EPF</th>
+                            <th style="width: 180px;">PF</th>
+                            <th style="width: 180px;">EDLI</th>
+                            <th style="width: 180px;">TDS 192 B</th>
+                            <th style="width: 180px;">TDS 194 J</th>
+                            <th style="width: 180px;">PROFESSIONAL TAX</th>
+                            <th style="width: 180px;">ESI EMPLOYER</th>
+                            <th style="width: 180px;">LIC</th>
+                            <th style="width: 180px;">Other</th>
+                            <th style="width: 130px;">Festival Allowance</th>
                             <th>Base Salary</th>
                             <th>Gross Salary</th>
                             <th>Net Salary</th>
@@ -71,11 +73,66 @@
                         </tr>
                     </thead>
                     <tbody>
+                        @php
+                            if (!function_exists('resolveDeductionUI')) {
+                                function resolveDeductionUI($savedAmount, $dmValue, $dmType, $dmAmount) {
+                                    $savedAmount = (float)($savedAmount ?? 0);
+                                    $dmAmount = (float)($dmAmount ?? 0);
+                                    $dmValue = (float)($dmValue ?? 0);
+                                    
+                                    if ($savedAmount == 0) {
+                                        return ['value' => $dmValue, 'type' => $dmType ?: 'amount', 'amt' => $dmAmount];
+                                    }
+                                    if (abs($savedAmount - $dmAmount) < 0.05) {
+                                        return ['value' => $dmValue, 'type' => $dmType ?: 'amount', 'amt' => $dmAmount];
+                                    }
+                                    return ['value' => $savedAmount, 'type' => 'amount', 'amt' => $savedAmount];
+                                }
+                            }
+                        @endphp
                         @foreach($frozenPayrolls as $index => $payroll)
+                            @php
+                                // Resolve UI for all 10 deduction types
+                                $uiTds = resolveDeductionUI($payroll->tds ?? 0, $payroll->dm_tds_value, $payroll->dm_tds_type, $payroll->dm_tds_amount);
+                                $uiEpf = resolveDeductionUI($payroll->epf_employers_share ?? 0, $payroll->dm_epf_value, $payroll->dm_epf_type, $payroll->dm_epf_amount);
+                                $uiPf = resolveDeductionUI($payroll->pf ?? 0, $payroll->dm_pf_value, $payroll->dm_pf_type, $payroll->dm_pf_amount);
+                                $uiEdli = resolveDeductionUI($payroll->edli_charges ?? 0, $payroll->dm_edli_value, $payroll->dm_edli_type, $payroll->dm_edli_amount);
+                                $ui192 = resolveDeductionUI($payroll->tds_192_b ?? 0, $payroll->dm_tds_192_b_value, $payroll->dm_tds_192_b_type, $payroll->dm_tds_192_b_amount);
+                                $ui194 = resolveDeductionUI($payroll->tds_194_j ?? 0, $payroll->dm_tds_194_j_value, $payroll->dm_tds_194_j_type, $payroll->dm_tds_194_j_amount);
+                                $uiPt = resolveDeductionUI($payroll->professional_tax ?? 0, $payroll->dm_professional_tax_value, $payroll->dm_professional_tax_type, $payroll->dm_professional_tax_amount);
+                                $uiEsi = resolveDeductionUI($payroll->esi_employer ?? 0, $payroll->dm_esi_employer_value, $payroll->dm_esi_employer_type, $payroll->dm_esi_employer_amount);
+                                $uiLic = resolveDeductionUI($payroll->lic_others ?? 0, $payroll->dm_lic_value, $payroll->dm_lic_type, $payroll->dm_lic_amount);
+                                $uiOther = resolveDeductionUI($payroll->others ?? 0, $payroll->dm_other_value, $payroll->dm_other_type, $payroll->dm_other_amount);
+                                
+                                // Compute the PRORATED salary from frozen components
+                                $totalWorkingDays = (float)($payroll->total_working_days ?? 0);
+                                $daysWorked = (float)($payroll->days_worked ?? 0);
+                                $grossSalary = (float)($payroll->gross_salary ?? 0);
+                                $arrear = (float)($payroll->other_allowance ?? 0);
+                                
+                                // Prorated base = (gross / working_days) * days_worked
+                                $proratedSalary = ($totalWorkingDays > 0) ? ($grossSalary / $totalWorkingDays) * $daysWorked : $grossSalary;
+                                
+                                // Gross Salary (before deductions) = prorated + arrear
+                                $computedGrossSalary = $proratedSalary + $arrear;
+                                
+                                // Sum ALL deduction amounts for net salary computation
+                                $allDeductionAmts = $uiTds['amt'] + $uiEpf['amt'] + $uiPf['amt'] + $uiEdli['amt'] +
+                                                    $ui192['amt'] + $ui194['amt'] + $uiPt['amt'] + $uiEsi['amt'] + 
+                                                    $uiLic['amt'] + $uiOther['amt'] + (float)($payroll->festival_allowance ?? 0);
+                                
+                                $computedNetSalary = $computedGrossSalary - $allDeductionAmts;
+                                $displayedPercentage = ($grossSalary > 0) ? ($computedNetSalary / $grossSalary) * 100 : 0;
+                            @endphp
                             <tr>
                                 <input type="hidden" name="p_id[]" value="{{ $payroll->p_id }}">
                                 <input type="hidden" name="months[{{ $payroll->p_id }}]" value="{{ $payroll->paymonth }}">
                                 <input type="hidden" name="years[{{ $payroll->p_id }}]" value="{{ $payroll->year }}">
+                                <input type="hidden" class="gross-salary-val" value="{{ $payroll->gross_salary ?? 0 }}">
+                                <input type="hidden" class="computed-gross-salary-val" value="{{ $computedGrossSalary }}">
+                                <input type="hidden" class="basic-pay-val" value="{{ $payroll->basic_pay ?? 0 }}">
+                                <input type="hidden" class="da-val" value="{{ $payroll->da ?? 0 }}">
+                                <input type="hidden" class="employment-type-val" value="{{ $payroll->employment_type ?? '' }}">
                                 
                                 <td class="fw-semibold">{{ $payroll->name }}</td>
                                 <td><span class="badge bg-label-primary">{{ $payroll->paymonth }} {{ $payroll->year }}</span></td>
@@ -89,61 +146,58 @@
                                 <td class="text-center">{{ $payroll->sl_days ?? 0 }}</td>
                                 <td class="text-center">{{ $payroll->pl_days ?? 0 }}</td>
                                 <td class="text-center"><span class="badge bg-label-danger">{{ $payroll->lop_days ?? 0 }}</span></td>
-                                <td class="text-end">₹{{ number_format((float)($payroll->epf_employers_share ?? 0), 2) }}</td>
-                                <td class="text-end">₹{{ number_format((float)($payroll->edli_charges ?? 0), 2) }}</td>
-                                <td class="text-end">₹{{ number_format((float)($payroll->pf ?? 0), 2) }}</td>
                                 <td class="text-end">₹{{ number_format((float)($payroll->employer_contribution ?? 0), 2) }}</td>
-                                <td class="text-end text-success">₹{{ number_format((float)($payroll->arrear ?? 0), 2) }}</td>
-                                <td class="text-end">₹{{ number_format((float)($payroll->others ?? 0), 2) }}</td>
-                                <td style="width: 150px;">
-                                    <input type="number" name="tds_192_b[{{ $payroll->p_id }}]" class="form-control form-control-sm text-end tds-192-b" value="{{ $payroll->tds_192_b ?? 0 }}" min="0" step="0.01">
+                                <td class="text-end text-success">₹{{ number_format((float)($payroll->other_allowance ?? 0), 2) }}</td>
+
+                                {{-- ===== DYNAMIC DEDUCTION COLUMNS ===== --}}
+                                @php
+                                    // Define all deduction columns with their config
+                                    $deductionColumns = [
+                                        ['key' => 'tds',              'label' => 'TDS',              'flag' => $payroll->dm_tds_flag,              'ui' => $uiTds],
+                                        ['key' => 'epf',              'label' => 'EPF',              'flag' => $payroll->dm_epf_flag,              'ui' => $uiEpf],
+                                        ['key' => 'pf_ded',           'label' => 'PF',               'flag' => $payroll->dm_pf_flag,               'ui' => $uiPf],
+                                        ['key' => 'edli',             'label' => 'EDLI',             'flag' => $payroll->dm_edli_flag,             'ui' => $uiEdli],
+                                        ['key' => 'tds_192_b',        'label' => 'TDS 192 B',        'flag' => $payroll->dm_tds_192_b_flag,        'ui' => $ui192],
+                                        ['key' => 'tds_194_j',        'label' => 'TDS 194 J',        'flag' => $payroll->dm_tds_194_j_flag,        'ui' => $ui194],
+                                        ['key' => 'professional_tax', 'label' => 'PROFESSIONAL TAX', 'flag' => $payroll->dm_professional_tax_flag, 'ui' => $uiPt],
+                                        ['key' => 'esi_employer',     'label' => 'ESI EMPLOYER',     'flag' => $payroll->dm_esi_employer_flag,     'ui' => $uiEsi],
+                                        ['key' => 'lic_others',       'label' => 'LIC',              'flag' => $payroll->dm_lic_flag,              'ui' => $uiLic],
+                                        ['key' => 'other_ded',        'label' => 'Other',            'flag' => $payroll->dm_other_flag,            'ui' => $uiOther],
+                                    ];
+                                @endphp
+
+                                @foreach($deductionColumns as $ded)
+                                <td style="min-width: 180px;" class="align-middle">
+                                    @if($ded['flag'])
+                                        <div class="input-group input-group-sm">
+                                            <input type="number" class="form-control text-end ded-val" data-target="{{ $ded['key'] }}" data-pid="{{ $payroll->p_id }}" value="{{ $ded['ui']['value'] }}" min="0" step="0.01">
+                                            <select class="form-select ded-type" data-target="{{ $ded['key'] }}" data-pid="{{ $payroll->p_id }}" style="max-width: 45px; padding: 0 5px;">
+                                                <option value="amount" {{ $ded['ui']['type'] == 'amount' ? 'selected' : '' }}>₹</option>
+                                                <option value="percentage" {{ $ded['ui']['type'] == 'percentage' ? 'selected' : '' }}>%</option>
+                                            </select>
+                                        </div>
+                                        <input type="hidden" name="{{ $ded['key'] }}[{{ $payroll->p_id }}]" class="ded-hidden-amt" id="hidden_{{ $ded['key'] }}_{{ $payroll->p_id }}" value="{{ $ded['ui']['amt'] }}">
+                                        <small class="text-muted d-block mt-1 text-center">Amt: <strong id="calc_{{ $ded['key'] }}_{{ $payroll->p_id }}">₹{{ number_format($ded['ui']['amt'], 2) }}</strong></small>
+                                    @else
+                                        <div class="text-center"><span class="text-muted">-</span></div>
+                                        <input type="hidden" name="{{ $ded['key'] }}[{{ $payroll->p_id }}]" class="ded-hidden-amt" id="hidden_{{ $ded['key'] }}_{{ $payroll->p_id }}" value="0">
+                                    @endif
                                 </td>
-                                <td style="width: 150px;">
-                                    <input type="number" name="tds_194_j[{{ $payroll->p_id }}]" class="form-control form-control-sm text-end tds-194-j" value="{{ $payroll->tds_194_j ?? 0 }}" min="0" step="0.01">
+                                @endforeach
+
+                                <td class="text-center align-middle">
+                                    <input type="number" name="festival_allowance[{{ $payroll->p_id }}]" class="form-control form-control-sm text-end attr-festival-allowance" value="{{ $payroll->festival_allowance ?? 0 }}" style="min-width: 90px;" min="0" step="0.01">
                                 </td>
-                                <td style="width: 150px;">
-                                    <input type="number" name="professional_tax[{{ $payroll->p_id }}]" class="form-control form-control-sm text-end attr-pt" value="{{ $payroll->professional_tax ?? 0 }}" min="0" step="0.01">
-                                </td>
-                                <td style="width: 150px;">
-                                    <input type="number" name="esi_employer[{{ $payroll->p_id }}]" class="form-control form-control-sm text-end attr-esi-employer" value="{{ $payroll->esi_employer ?? 0 }}" min="0" step="0.01">
-                                </td>
-                                <td style="width: 150px;">
-                                    <input type="number" name="lic_others[{{ $payroll->p_id }}]" class="form-control form-control-sm text-end attr-lic-others" value="{{ $payroll->lic_others ?? 0 }}" min="0" step="0.01">
-                                </td>
-                                <td style="width: 150px;">
-                                    <input type="number" name="festival_allowance[{{ $payroll->p_id }}]" class="form-control form-control-sm text-end attr-festival-allowance" value="{{ $payroll->festival_allowance ?? 0 }}" min="0" step="0.01">
-                                </td>
-                                <td class="text-end fw-semibold">₹{{ number_format((float)($payroll->basic_pay ?? 0), 2) }}</td>
-                                <td class="text-end fw-semibold">₹{{ number_format((float)($payroll->gross_salary ?? 0), 2) }}</td>
+                                <td class="text-end fw-semibold">₹{{ number_format($grossSalary, 2) }}</td>
+                                <td class="text-end fw-semibold">₹{{ number_format($computedGrossSalary, 2) }}</td>
                                 <td class="text-end fw-semibold text-secondary">
-                                    ₹{{ number_format((float)($payroll->net_salary ?? 0), 2) }}
-                                    <input type="hidden" class="original-net-salary-val" value="{{ $payroll->net_salary ?? 0 }}">
+                                    ₹{{ number_format($computedNetSalary, 2) }}
                                 </td>
-                                <td class="text-end fw-semibold text-success">
-                                    ₹<span class="current-net-salary-display">
-                                    {{ number_format((float)(
-                                        ($payroll->net_salary ?? 0) - 
-                                        ($payroll->tds_192_b ?? 0) - 
-                                        ($payroll->tds_194_j ?? 0) - 
-                                        ($payroll->professional_tax ?? 0) - 
-                                        ($payroll->esi_employer ?? 0) - 
-                                        ($payroll->lic_others ?? 0) -
-                                        ($payroll->festival_allowance ?? 0)
-                                    ), 2) }}
-                                    </span>
+                                <td class="text-end fw-bold text-success">
+                                    ₹<span class="current-net-salary-display">{{ number_format($computedNetSalary, 2) }}</span>
                                 </td>
                                 <td class="text-center fw-bold text-primary">
-                                    <span class="summary-percentage-display">
-                                        {{ $payroll->gross_salary > 0 ? number_format((float)((
-                                            ($payroll->net_salary ?? 0) - 
-                                            ($payroll->tds_192_b ?? 0) - 
-                                            ($payroll->tds_194_j ?? 0) - 
-                                            ($payroll->professional_tax ?? 0) - 
-                                            ($payroll->esi_employer ?? 0) - 
-                                            ($payroll->lic_others ?? 0) -
-                                            ($payroll->festival_allowance ?? 0)
-                                        ) / $payroll->gross_salary) * 100, 1) : 0 }}%
-                                    </span>
+                                    <span class="summary-percentage-display">{{ number_format($displayedPercentage, 1) }}%</span>
                                 </td>
                                 <td class="text-center">
                                     @if($payroll->is_frozen == 1)
@@ -155,8 +209,8 @@
                             </tr>
                         @endforeach
                     </tbody>
-                </table>
-            </div>
+                    </table>
+                </div>
 
             <div class="mt-4 text-end">
                 <button type="submit" class="btn btn-primary" title="Save Deductions">Save & Proceed</button>
@@ -174,25 +228,24 @@ $(document).ready(function() {
         $('tbody tr').each(function() {
             var row = $(this);
             
-            // Get original net salary and gross salary
-            var originalNetSalary = parseFloat(row.find('.original-net-salary-val').val()) || 0;
+            // Get the computed gross salary (prorated + arrear)
+            var computedGross = parseFloat(row.find('.computed-gross-salary-val').val()) || 0;
             var grossSalary = parseFloat(row.find('.gross-salary-val').val()) || 0;
             
-            // Get new input deductions
-            var tds192 = parseFloat(row.find('.tds-192-b').val()) || 0;
-            var tds194 = parseFloat(row.find('.tds-194-j').val()) || 0;
-            var pt = parseFloat(row.find('.attr-pt').val()) || 0;
-            var esiEmp = parseFloat(row.find('.attr-esi-employer').val()) || 0;
-            var licOther = parseFloat(row.find('.attr-lic-others').val()) || 0;
-            var festivalAllowance = parseFloat(row.find('.attr-festival-allowance').val()) || 0;
+            // Sum ALL deduction hidden amounts
+            var totalDeductions = 0;
+            row.find('.ded-hidden-amt').each(function() {
+                totalDeductions += parseFloat($(this).val()) || 0;
+            });
             
-            // New deductions sum
-            var newDeductions = tds192 + tds194 + pt + esiEmp + licOther + festivalAllowance;
+            // Add festival allowance
+            var festivalAllowance = parseFloat(row.find('.attr-festival-allowance').val()) || 0;
+            totalDeductions += festivalAllowance;
             
             // Current Net Salary
-            var currentNetSalary = originalNetSalary - newDeductions;
+            var currentNetSalary = computedGross - totalDeductions;
             
-            // Calculate Percentage (Current Net / Gross * 100)
+            // Calculate Percentage (Current Net / Base Salary * 100)
             var percentage = 0;
             if (grossSalary > 0) {
                 percentage = (currentNetSalary / grossSalary) * 100;
@@ -204,10 +257,55 @@ $(document).ready(function() {
         });
     }
 
-    // Trigger calculation on input change
-    $(document).on('input', '.tds-192-b, .tds-194-j, .attr-pt, .attr-esi-employer, .attr-lic-others, .attr-festival-allowance', function() {
+    // Trigger calculation on input change for festival allowance
+    $(document).on('input', '.attr-festival-allowance', function() {
         calculateNetSalary();
     });
+
+    // Handle editable value and type fields for active deductions
+    $('.ded-val, .ded-type').on('input change', function() {
+        var row = $(this).closest('tr');
+        var pid = $(this).data('pid');
+        var target = $(this).data('target');
+        
+        var valInput = row.find('.ded-val[data-target="' + target + '"]');
+        var typeDropdown = row.find('.ded-type[data-target="' + target + '"]');
+        var hiddenAmountInput = $('#hidden_' + target + '_' + pid);
+        var calcText = $('#calc_' + target + '_' + pid);
+        
+        var val = parseFloat(valInput.val()) || 0;
+        var type = typeDropdown.val();
+        var grossSalary = parseFloat(row.find('.gross-salary-val').val()) || 0;
+        
+        var calculatedAmount = 0;
+        if (type === 'percentage') {
+            var empType = row.find('.employment-type-val').val() || '';
+            var baseAmount = grossSalary;
+            
+            // For PF calculation of Deputation employees (% of Gross selected) -> Only DA + Basic Salary, excluding HRA
+            if (empType.toLowerCase() === 'deputation' && target === 'pf_ded') {
+                 var basic = parseFloat(row.find('.basic-pay-val').val()) || 0;
+                 var da = parseFloat(row.find('.da-val').val()) || 0;
+                 baseAmount = basic + da;
+            }
+            
+            calculatedAmount = (val / 100) * baseAmount;
+        } else {
+            calculatedAmount = val;
+        }
+        
+        // Update hidden form field
+        hiddenAmountInput.val(calculatedAmount.toFixed(2));
+        
+        // Update visible Amt text
+        calcText.text('₹' + calculatedAmount.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2}));
+        
+        // Trigger net salary recalculation
+        calculateNetSalary();
+    });
+
+    // Run calculation once on page load to sync percentage amounts with the CURRENT base salary
+    $('.ded-val').trigger('change');
 });
 </script>
 @endsection

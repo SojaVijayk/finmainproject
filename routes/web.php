@@ -25,6 +25,7 @@ use App\Http\Controllers\PMS\VendorController;
 use App\Http\Controllers\PMS\AttachmentController;
 use App\Http\Controllers\Project\ProjectEmployeeController;
 use App\Http\Controllers\Project\DeductionMasterController;
+use App\Http\Controllers\Project\PayItemMasterController;
 use App\Http\Controllers\CertificateController;
 
 use App\Exports\ProjectsExport;
@@ -693,6 +694,13 @@ Route::group(['middleware' => 'auth'], function () {
       Route::get('/deduction-master/{project_id?}', [DeductionMasterController::class, 'index'])->name('deduction-master.index');
       Route::post('/deduction-master/select-employees/{project_id?}', [DeductionMasterController::class, 'selectEmployees'])->name('deduction-master.select-employees');
       Route::post('/deduction-master/store/{project_id?}', [DeductionMasterController::class, 'storeDeductions'])->name('deduction-master.store');
+
+      // Pay Item Master
+      Route::get('/pay-item-master/{project_id?}', [PayItemMasterController::class, 'index'])->name('pay-item-master.index');
+      Route::post('/pay-item-master/store', [PayItemMasterController::class, 'store'])->name('pay-item-master.store');
+      Route::delete('/pay-item-master/{id}', [PayItemMasterController::class, 'destroy'])->name('pay-item-master.destroy');
+      Route::post('/pay-item-master/generate-bill', [PayItemMasterController::class, 'generateBillList'])->name('pay-item-master.generate-bill');
+      Route::post('/pay-item-master/store-bill', [PayItemMasterController::class, 'storeBill'])->name('pay-item-master.store-bill');
 
       // Requirements
       Route::get('requirements/master-list', [RequirementController::class, 'masterList'])->name(

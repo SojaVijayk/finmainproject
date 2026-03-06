@@ -26,7 +26,7 @@
         }
       }
     @endphp
-    @if( auth()->user()->user_role == 1 ||  (auth()->user()->can($submenu->permission)) || ($submenu->permission == 1)  || (!isset($submenu->permission))   )
+    @if( auth()->user()->user_role == 1 || !isset($submenu->permission) || ($submenu->permission == 1) || (auth()->user()->can($submenu->permission)) )
       <li class="menu-item {{$activeClass}}">
         <a href="{{ isset($submenu->url) ? url($submenu->url) : 'javascript:void(0)' }}" class="{{ isset($submenu->submenu) ? 'menu-link menu-toggle' : 'menu-link' }}" @if (isset($submenu->target) and !empty($submenu->target)) target="_blank" @endif>
           @if (isset($submenu->icon))

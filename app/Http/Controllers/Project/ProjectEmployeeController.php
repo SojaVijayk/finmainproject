@@ -15,6 +15,8 @@ use Spatie\Permission\Models\Role;
 use Illuminate\Support\Facades\Hash;
 use App\Models\Service;
 use App\Models\Payroll;
+use App\Models\DeductionMaster;
+use App\Models\EmployeeDynamicDeduction;
 
 class ProjectEmployeeController extends Controller
 {
@@ -154,15 +156,17 @@ class ProjectEmployeeController extends Controller
   {
     $pageConfigs = ['myLayout' => 'horizontal'];
     $employee = ProjectEmployee::where('id', $id)
-    ->with(['services.audits', 'payroll', 'designation', 'project'])
+    ->with(['services.audits', 'payroll', 'designation', 'project', 'deductionMaster', 'dynamicDeductions'])
       ->firstOrFail();
 
     $designations = Designation::where('status', 1)->get();
     $user_types = DB::table("usertype_role")->where('status', 1)->get();
 
-    // return view('content.projects.employee-details', compact('employee', 'pageConfigs', 'designations', 'user_types'));
-    // return "DEBUG: HELLO WORLD - CONTROLLER IS WORKING";
-    return view('content.projects.employee-details-v2', compact('employee', 'pageConfigs', 'designations', 'user_types'));
+    $employmentTypes = \App\Models\EmploymentType::where('status', 1)->get();
+    $payTypes = \App\Models\PayType::where('status', 1)->get();
+    $masterDeductions = \App\Models\MasterDynamicDeduction::where('status', 1)->get();
+
+    return view('content.projects.employee-details-v2', compact('employee', 'pageConfigs', 'designations', 'user_types', 'employmentTypes', 'payTypes', 'masterDeductions'));
   }
 
     public function updateMaster(Request $request, $id)
@@ -184,7 +188,7 @@ class ProjectEmployeeController extends Controller
       ]);
 
       $allowed_fields = [
-          'name', 'mobile', 'age', 'dob', 'address', 
+          'name', 'mobile', 'pan_number', 'age', 'dob', 'address', 
           'bank_name', 'account_no', 'account_name', 'branch', 'ifsc_code'
       ];
       $data = $request->only($allowed_fields);
@@ -226,6 +230,9 @@ class ProjectEmployeeController extends Controller
           'employment_type' => 'required',
           'pay_type' => 'required',
           'consolidated_pay' => 'required|numeric',
+          'basic_pay' => 'required_if:employment_type,Deputation|nullable|numeric',
+          'da' => 'required_if:employment_type,Deputation|nullable|numeric',
+          'hra' => 'required_if:employment_type,Deputation|nullable|numeric',
           'start_date' => 'required|date',
       ]);
 
@@ -233,8 +240,14 @@ class ProjectEmployeeController extends Controller
       $employee = ProjectEmployee::findOrFail($id);
       $p_id = $employee->p_id;
 
-      $allowedFields = ['department', 'employment_type', 'role', 'pay_type', 'consolidated_pay', 'start_date', 'end_date', 'status'];
+      $allowedFields = ['department', 'employment_type', 'role', 'pay_type', 'consolidated_pay', 'basic_pay', 'da', 'hra', 'start_date', 'end_date', 'status', 'pf_available', 'pf_uan'];
       $data = $request->only($allowedFields);
+
+      // Handle checkbox for PF Available
+      $data['pf_available'] = $request->has('pf_available') && $request->pf_available !== 'false' ? 1 : 0;
+      if ($data['pf_available'] == 0) {
+          $data['pf_uan'] = null;
+      }
 
       $serviceId = $request->id ?? $request->service_id;
       $isNewRecord = ($request->has('new_record') && $request->new_record == '1');
@@ -316,6 +329,28 @@ class ProjectEmployeeController extends Controller
           $employee->status = $hasActiveService ? 1 : 2;
           $employee->save();
       }
+
+      // 6. Handle Dynamic Deductions
+      if ($request->has('dynamic_deductions')) {
+          $deductionsJson = $request->input('dynamic_deductions');
+          $deductionsArray = json_decode($deductionsJson, true);
+
+          if (is_array($deductionsArray)) {
+              // Delete existing deductions for this employee to replace them
+              EmployeeDynamicDeduction::where('p_id', $p_id)->delete();
+
+              foreach ($deductionsArray as $ded) {
+                  EmployeeDynamicDeduction::create([
+                      'p_id' => $p_id,
+                      'deduction_name' => $ded['deduction_name'] ?? $ded['name'], // Fallback depending on JS mapping
+                      'calculation_type' => $ded['calculation_type'] ?? $ded['type'],
+                      'percentage' => $ded['percentage'],
+                      'base_amount' => $ded['base_amount'],
+                      'amount' => $ded['amount']
+                  ]);
+              }
+          }
+      }
       
       return response()->json(['success' => true, 'message' => 'Service info updated successfully']);
   }
@@ -358,6 +393,78 @@ class ProjectEmployeeController extends Controller
     );
     
     return response()->json(['success' => true, 'message' => 'Payroll info updated successfully']);
+  }
+
+  public function updateDeduction(Request $request, $p_id)
+  {
+      $employee = ProjectEmployee::where('p_id', $p_id)->firstOrFail();
+
+      $data = $request->only([
+          'tds', 'tds_value', 'tds_type',
+          'epf', 'epf_value', 'epf_type',
+          'pf', 'pf_value', 'pf_type',
+          'lic', 'lic_value', 'lic_type',
+          'edli', 'edli_value', 'edli_type',
+          'other', 'other_value', 'other_type',
+          'tds_192_b', 'tds_192_b_value', 'tds_192_b_type',
+          'tds_194_j', 'tds_194_j_value', 'tds_194_j_type',
+          'professional_tax', 'professional_tax_value', 'professional_tax_type',
+          'esi_employer', 'esi_employer_value', 'esi_employer_type',
+          'other_details'
+      ]);
+
+      // Convert checkbox values to boolean safely
+      $data['tds'] = $request->has('tds') ? 1 : 0;
+      $data['epf'] = $request->has('epf') ? 1 : 0;
+      $data['pf'] = $request->has('pf') ? 1 : 0;
+      $data['lic'] = $request->has('lic') ? 1 : 0;
+      $data['edli'] = $request->has('edli') ? 1 : 0;
+      $data['other'] = $request->has('other') ? 1 : 0;
+      $data['tds_192_b'] = $request->has('tds_192_b') ? 1 : 0;
+      $data['tds_194_j'] = $request->has('tds_194_j') ? 1 : 0;
+      $data['professional_tax'] = $request->has('professional_tax') ? 1 : 0;
+      $data['esi_employer'] = $request->has('esi_employer') ? 1 : 0;
+      
+      // Default types to 'amount' if not present
+      $data['tds_type'] = $data['tds_type'] ?? 'amount';
+      $data['epf_type'] = $data['epf_type'] ?? 'amount';
+      $data['pf_type'] = $data['pf_type'] ?? 'amount';
+      $data['lic_type'] = $data['lic_type'] ?? 'amount';
+      $data['edli_type'] = $data['edli_type'] ?? 'amount';
+      $data['other_type'] = $data['other_type'] ?? 'amount';
+      $data['tds_192_b_type'] = $data['tds_192_b_type'] ?? 'amount';
+      $data['tds_194_j_type'] = $data['tds_194_j_type'] ?? 'amount';
+      $data['professional_tax_type'] = $data['professional_tax_type'] ?? 'amount';
+      $data['esi_employer_type'] = $data['esi_employer_type'] ?? 'amount';
+
+      // Get employee's active base pay
+      $basePay = 0;
+      $activeService = Service::where('p_id', $p_id)->where('status', 1)->first();
+      if ($activeService) {
+          $basePay = $activeService->consolidated_pay ?? 0;
+      }
+
+      // Calculate amounts
+      $deductions = ['tds', 'epf', 'pf', 'lic', 'edli', 'tds_192_b', 'tds_194_j', 'professional_tax', 'esi_employer', 'other'];
+      foreach ($deductions as $key) {
+          $val = floatval($data[$key . '_value'] ?? 0);
+          $type = $data[$key . '_type'];
+          
+          if ($type === 'percentage') {
+              $data[$key . '_amount'] = ($val / 100) * $basePay;
+          } else {
+              $data[$key . '_amount'] = $val;
+          }
+      }
+
+      $data['p_id'] = $p_id;
+
+      $deduction = DeductionMaster::updateOrCreate(
+          ['p_id' => $p_id],
+          $data
+      );
+
+      return response()->json(['success' => true, 'message' => 'Deduction Master info updated successfully']);
   }
 
   public function employeeAccountView($id){
@@ -403,6 +510,9 @@ class ProjectEmployeeController extends Controller
             'joining_date' => 'required',
             'address' => 'required',
             'documents' => 'nullable|file|mimes:pdf,doc,docx,jpg,jpeg,png|max:2048',
+            'basic_pay' => 'required_if:employment_type,Deputation|nullable|numeric',
+            'da' => 'required_if:employment_type,Deputation|nullable|numeric',
+            'hra' => 'required_if:employment_type,Deputation|nullable|numeric',
         ]);
 
         $input = $request->all();
@@ -450,6 +560,7 @@ class ProjectEmployeeController extends Controller
                     'name' => $request->name,
                     'last_name' => '',
                     'mobile' => $request->mobile,
+                    'pan_number' => $request->pan_number,
                     'email' => $request->email,
                     'designation_id' => null,
                     'age' => $request->age,
@@ -487,6 +598,7 @@ class ProjectEmployeeController extends Controller
                 'name' => $request->name,
                 'last_name' => '',
                 'mobile' => $request->mobile,
+                'pan_number' => $request->pan_number,
                 'email' => $request->email,
                 'designation_id' => null,
                 'age' => $request->age,
@@ -529,8 +641,13 @@ class ProjectEmployeeController extends Controller
             'role' => $request->role,
             'pay_type' => $request->pay_type,
             'consolidated_pay' => $request->consolidated_pay,
+            'basic_pay' => $request->basic_pay,
+            'da' => $request->da,
+            'hra' => $request->hra,
             'start_date' => $request->joining_date, // Start Date = Joining Date
             'status' => 1, // Active
+            'pf_available' => $request->has('pf_available') && $request->pf_available !== 'false' ? 1 : 0,
+            'pf_uan' => ($request->has('pf_available') && $request->pf_available !== 'false') ? $request->pf_uan : null,
         ]);
 
         // 6. Initialize Payroll (Idempotent-ish, or just create new if needed)

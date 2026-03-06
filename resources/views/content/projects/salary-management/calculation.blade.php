@@ -67,10 +67,10 @@
                 <input type="hidden" class="month-days-val" value="{{ $actualDaysInMonth }}">
               </td>
               <td>
-                <input type="number" name="monthly_working_days[]" class="form-control form-control-sm text-center working-days" value="{{ $totalDays }}" min="1" max="40" required {{ $isFrozen ? 'readonly tabindex=-1' : '' }}>
+                <input type="number" name="monthly_working_days[]" class="form-control form-control-sm text-center working-days" value="{{ $employee->total_working_days ?? $totalDays }}" min="1" max="40" required {{ $isFrozen ? 'readonly tabindex=-1' : '' }}>
               </td>
               <td>
-                <input type="number" name="days_worked[]" class="form-control form-control-sm text-center days-worked" value="{{ $actualDaysInMonth - $employee->lop_days }}" min="0" max="{{ $actualDaysInMonth }}" step="0.5" required {{ $isFrozen ? 'readonly tabindex=-1' : '' }}>
+                <input type="number" name="days_worked[]" class="form-control form-control-sm text-center days-worked" value="{{ $employee->days_worked ?? ($actualDaysInMonth - $employee->lop_days) }}" min="0" max="{{ $actualDaysInMonth }}" step="0.5" required {{ $isFrozen ? 'readonly tabindex=-1' : '' }}>
               </td>
               <td>
                 <input type="number" name="cl_days[]" class="form-control form-control-sm text-center cl-days" value="{{ $employee->cl_days }}" min="0" step="0.5" style="min-width: 80px;" {{ $isFrozen ? 'readonly tabindex=-1' : '' }}>
@@ -97,7 +97,7 @@
                 <input type="number" name="employer_contribution[]" class="form-control form-control-sm text-end employer-contribution" value="{{ $employee->employer_contribution ?? 0 }}" min="0" step="0.01" style="min-width: 80px;" {{ $isFrozen ? 'readonly tabindex=-1' : '' }}>
               </td>
               <td>
-                <input type="number" name="arrear[]" class="form-control form-control-sm text-end arrear" value="0" min="0" step="0.01" style="min-width: 80px;" {{ $isFrozen ? 'readonly tabindex=-1' : '' }}>
+                <input type="number" name="arrear[]" class="form-control form-control-sm text-end arrear" value="{{ $employee->arrear ?? 0 }}" min="0" step="0.01" style="min-width: 80px;" {{ $isFrozen ? 'readonly tabindex=-1' : '' }}>
               </td>
               <td>
                 <input type="number" name="other_leave_days[]" class="form-control form-control-sm text-center other-leaves" value="{{ $employee->other_leave_days }}" min="0" step="0.5" style="min-width: 80px;" {{ $isFrozen ? 'readonly tabindex=-1' : '' }}>
@@ -106,11 +106,11 @@
                 <input type="number" class="form-control form-control-sm text-center payable-days" value="{{ ($actualDaysInMonth - $employee->lop_days) + $employee->cl_days + $employee->sl_days + $employee->pl_days + $employee->other_leave_days }}" readonly disabled>
               </td>
               <td>
-                <input type="number" name="base_salary[]" class="form-control form-control-sm text-end base-salary" value="{{ $employee->consolidated_pay }}" readonly>
+                <input type="number" name="base_salary[]" class="form-control form-control-sm text-end base-salary" value="{{ $employee->gross_salary ?? $employee->consolidated_pay }}" readonly>
               </td>
               <td>
                 @php
-                  $initialTotal = ($totalDays > 0) ? ($employee->consolidated_pay / $totalDays) * ($actualDaysInMonth - $employee->lop_days) : 0;
+                  $initialTotal = isset($employee->net_salary) ? $employee->net_salary : (($totalDays > 0) ? ($employee->consolidated_pay / $totalDays) * ($actualDaysInMonth - $employee->lop_days) : 0);
                 @endphp
                 <input type="number" step="0.01" name="total_salary[]" class="form-control form-control-sm text-end total-salary" value="{{ number_format($initialTotal, 2, '.', '') }}" readonly>
               </td>
