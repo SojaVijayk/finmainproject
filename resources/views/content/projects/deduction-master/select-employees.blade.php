@@ -153,16 +153,16 @@
                                 @php
                                     // Define all deduction columns with their config
                                     $deductionColumns = [
-                                        ['key' => 'tds',              'label' => 'TDS',              'flag' => $payroll->dm_tds_flag,              'ui' => $uiTds],
-                                        ['key' => 'epf',              'label' => 'EPF',              'flag' => $payroll->dm_epf_flag,              'ui' => $uiEpf],
-                                        ['key' => 'pf_ded',           'label' => 'PF',               'flag' => $payroll->dm_pf_flag,               'ui' => $uiPf],
-                                        ['key' => 'edli',             'label' => 'EDLI',             'flag' => $payroll->dm_edli_flag,             'ui' => $uiEdli],
-                                        ['key' => 'tds_192_b',        'label' => 'TDS 192 B',        'flag' => $payroll->dm_tds_192_b_flag,        'ui' => $ui192],
-                                        ['key' => 'tds_194_j',        'label' => 'TDS 194 J',        'flag' => $payroll->dm_tds_194_j_flag,        'ui' => $ui194],
-                                        ['key' => 'professional_tax', 'label' => 'PROFESSIONAL TAX', 'flag' => $payroll->dm_professional_tax_flag, 'ui' => $uiPt],
-                                        ['key' => 'esi_employer',     'label' => 'ESI EMPLOYER',     'flag' => $payroll->dm_esi_employer_flag,     'ui' => $uiEsi],
-                                        ['key' => 'lic_others',       'label' => 'LIC',              'flag' => $payroll->dm_lic_flag,              'ui' => $uiLic],
-                                        ['key' => 'other_ded',        'label' => 'Other',            'flag' => $payroll->dm_other_flag,            'ui' => $uiOther],
+                                        ['key' => 'tds',              'label' => 'TDS',              'flag' => $payroll->dm_tds_flag || $uiTds['amt'] > 0,              'ui' => $uiTds],
+                                        ['key' => 'epf',              'label' => 'EPF',              'flag' => $payroll->dm_epf_flag || $uiEpf['amt'] > 0,              'ui' => $uiEpf],
+                                        ['key' => 'pf_ded',           'label' => 'PF',               'flag' => $payroll->dm_pf_flag || $uiPf['amt'] > 0,               'ui' => $uiPf],
+                                        ['key' => 'edli',             'label' => 'EDLI',             'flag' => $payroll->dm_edli_flag || $uiEdli['amt'] > 0,             'ui' => $uiEdli],
+                                        ['key' => 'tds_192_b',        'label' => 'TDS 192 B',        'flag' => $payroll->dm_tds_192_b_flag || $ui192['amt'] > 0,        'ui' => $ui192],
+                                        ['key' => 'tds_194_j',        'label' => 'TDS 194 J',        'flag' => $payroll->dm_tds_194_j_flag || $ui194['amt'] > 0,        'ui' => $ui194],
+                                        ['key' => 'professional_tax', 'label' => 'PROFESSIONAL TAX', 'flag' => $payroll->dm_professional_tax_flag || $uiPt['amt'] > 0, 'ui' => $uiPt],
+                                        ['key' => 'esi_employer',     'label' => 'ESI EMPLOYER',     'flag' => $payroll->dm_esi_employer_flag || $uiEsi['amt'] > 0,     'ui' => $uiEsi],
+                                        ['key' => 'lic_others',       'label' => 'LIC',              'flag' => $payroll->dm_lic_flag || $uiLic['amt'] > 0,              'ui' => $uiLic],
+                                        ['key' => 'other_ded',        'label' => 'Other',            'flag' => $payroll->dm_other_flag || $uiOther['amt'] > 0,            'ui' => $uiOther],
                                     ];
                                 @endphp
 

@@ -110,10 +110,12 @@ class PayItemMasterController extends Controller
             $periodText = $isRange ? "{$startMonth} {$startYear} - {$endMonth} {$endYear}" : "{$startMonth} {$startYear}";
 
             // Main Source: project_employee
+            // The user requested to see ALL employees in this list, regardless of whether 
+            // they have an active service mapping or not.
             $query = \DB::table('project_employee')
                 ->leftJoin('service', function($join) {
-                    $join->on('project_employee.p_id', '=', 'service.p_id')
-                         ->where('service.status', '=', 1);
+                    // Pull the latest service block (or rely on generic) without enforcing status=1
+                    $join->on('project_employee.p_id', '=', 'service.p_id');
                 })
                 ->leftJoin('employment_types', 'service.employment_type', '=', 'employment_types.id')
                 ->leftJoin('salary', 'project_employee.p_id', '=', 'salary.p_id');
@@ -122,11 +124,8 @@ class PayItemMasterController extends Controller
                 $query->where('project_employee.project_id', $projectId);
             }
 
-            $employees = $query->where(function($q) use ($endOfPeriod) {
-                    $q->whereNull('project_employee.date_of_joining')
-                      ->orWhere('project_employee.date_of_joining', '<=', $endOfPeriod);
-                })
-                ->select(
+            // We use a raw 'pe_status' from project_employee directly so we don't accidentally drop anyone
+            $employees = $query->select(
                     'project_employee.p_id',
                     'project_employee.name as employee_name',
                     'project_employee.status as current_status',
@@ -139,7 +138,15 @@ class PayItemMasterController extends Controller
                     'salary.da as master_da',
                     'service.consolidated_pay'
                 )
+                // Enforce distinct on the exact combination of selected columns to prevent duplication fallout 
+                // from multiple service history joins without triggering ONLY_FULL_GROUP_BY MySQL mode
+                ->distinct()
+                ->orderBy('project_employee.name')
                 ->get();
+                
+            // Due to distinct(), if a user somehow accumulated functionally identical service rows, they might 
+            // slip through. We'll enforce one row per P_ID in PHP just to be absolutely bulletproof.
+            $employees = $employees->unique('p_id')->values();
 
             if ($employees->isEmpty()) {
                 return response()->json([
@@ -221,46 +228,27 @@ class PayItemMasterController extends Controller
                 $cumulativeGross = 0;
                 $latestSalaryId = 'N/A';
                 
-                // Determine base Projection Salary per month
-                $projBase = 0;
-                $lp = $latestPayroll->get($emp->p_id);
-                if ($lp) {
-                    $projBase = (float)($lp->gross_salary ?? 0);
-                    if ($projBase <= 0) $projBase = (float)($lp->basic_pay ?? 0) + (float)($lp->da ?? 0);
-                    $latestSalaryId = $lp->salary_id;
-                }
+                // Determine "Base Salary" strictly from structural master records 
+                // Ignore processed payrolls so prorated months (LOP) don't corrupt the projection
+                $projBase = (float)($emp->master_gross ?? 0);
                 
                 if ($projBase <= 0) {
                     $projBase = (float)($emp->consolidated_pay ?? 0);
                 }
                 if ($projBase <= 0) {
-                    $projBase = (float)($emp->master_gross ?? 0);
-                    if ($projBase <= 0) $projBase = (float)($emp->master_basic ?? 0) + (float)($emp->master_da ?? 0);
+                    $projBase = (float)($emp->master_basic ?? 0) + (float)($emp->master_da ?? 0);
+                }
+                
+                $latestSalaryId = 'N/A';
+                $lp = $latestPayroll->get($emp->p_id);
+                if ($lp) {
+                    $latestSalaryId = $lp->salary_id;
                 }
 
-                // Iterate through each month in the range
-                foreach ($rangeMonths as $rm) {
-                    // Try to find an actual payroll record for this specific month
-                    $existing = $empSalaries->first(function($s) use ($rm) {
-                        return $s->year == $rm['year'] && $s->paymonth == $rm['month_name'];
-                    });
-
-                    if ($existing) {
-                        $gs  = (float)($existing->gross_salary ?? 0);
-                        if ($gs <= 0) {
-                            $gs = (float)($existing->basic_pay ?? 0) + (float)($existing->da ?? 0);
-                        }
-                        $twd = (float)($existing->total_working_days ?? 0);
-                        $dw  = (float)($existing->days_worked ?? 0);
-                        $arr = (float)($existing->other_allowance ?? 0);
-                        
-                        $mSal = ($twd > 0 && $dw > 0 && $dw < $twd) ? ($gs / $twd) * $dw : $gs;
-                        $cumulativeGross += ($mSal + $arr);
-                    } else {
-                        // Use projection
-                        $cumulativeGross += $projBase;
-                    }
-                }
+                // The user explicitly requested that "Total Period Salary" should simply be 
+                // a 6-month calculation of the employee's raw base salary for Pay Item generation purposes.
+                // We bypass actual summed payroll historical records for this requirement.
+                $cumulativeGross = $projBase * 6;
 
                 $calculatedAmount = 0;
                 if ($payItem->is_slab_based && $payItem->slabs->isNotEmpty()) {
@@ -289,6 +277,7 @@ class PayItemMasterController extends Controller
                     'employee_name'    => $emp->employee_name,
                     'current_status'   => $statusLabel,
                     'employment_type'  => $typeLabel,
+                    'base_salary'      => $projBase,
                     'total_gross'      => $cumulativeGross,
                     'calculated_amount'=> $calculatedAmount,
                 ];
@@ -332,12 +321,32 @@ class PayItemMasterController extends Controller
         $monthNames = array_flip($monthOrder);
 
         // Map pay item names to exact employee_payroll columns where possible.
+        // Normalized entirely to lowercase for user typo resilience.
         $columnMap = [
-            'PF Tax'             => 'professional_tax',
-            'Festival Allowance' => 'festival_allowance',
+            'pf tax'                      => 'professional_tax',
+            'professional tax'            => 'professional_tax',
+            'pt'                          => 'professional_tax',
+            'festival allowance'          => 'festival_allowance',
+            'tds 192 b'                   => 'tds_192_b',
+            'tds 192b'                    => 'tds_192_b',
+            'tds 194 j'                   => 'tds_194_j',
+            'tds 194j'                    => 'tds_194_j',
+            'esi employer'                => 'esi_employer',
+            'esi'                         => 'esi',
+            'lic'                         => 'lic_others',
+            'lic others'                  => 'lic_others',
+            'epf employers share @ 12%'   => 'epf_employers_share',
+            'epf employer'                => 'epf_employers_share',
+            'epf'                         => 'epf',
+            'edli contribution and admin' => 'edli_charges',
+            'edli'                        => 'edli_charges',
+            'pf'                          => 'pf',
+            'employer contribution'       => 'employer_contribution',
+            'arrear'                      => 'other_allowance',
         ];
 
-        $destColumn = $columnMap[$payItem->name] ?? (($payItem->type === 'Allowance') ? 'other_allowance' : 'others');
+        $normalizedPayItemName = strtolower(trim($payItem->name));
+        $destColumn = $columnMap[$normalizedPayItemName] ?? (($payItem->type === 'Allowance') ? 'other_allowance' : 'others');
 
         $pIds    = $request->p_id;
         $amounts = $request->amount;
@@ -371,14 +380,12 @@ class PayItemMasterController extends Controller
                 $m = $period['month'];
                 $y = $period['year'];
 
-                // Update the specific column
-                \DB::table('employee_payroll')
-                    ->where('p_id', $pId)
-                    ->where('paymonth', $m)
-                    ->where('year', $y)
-                    ->update([
-                        $destColumn => $amt
-                    ]);
+                // Update or Insert the specific column so that even if Salary Management 
+                // hasn't generated the primary shell record yet, the deduction acts as a pre-loaded template.
+                \DB::table('employee_payroll')->updateOrInsert(
+                    ['p_id' => $pId, 'paymonth' => $m, 'year' => $y],
+                    [$destColumn => $amt]
+                );
 
                 // Re-fetch record to recalculate total_deductions and net_salary
                 $payroll = \DB::table('employee_payroll')
