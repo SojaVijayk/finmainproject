@@ -46,23 +46,12 @@
                                             <td>{{ $record->year }}</td>
                                             <td><span class="badge bg-label-info">{{ $record->employment_type }}</span></td>
                                             <td><span class="badge bg-label-secondary">{{ $record->salary_id }}</span></td>
-                                            @php
-                                                $twd = (float)($record->total_working_days ?? 0);
-                                                $dw = (float)($record->days_worked ?? 0);
-                                                $gs = (float)($record->gross_salary ?? 0);
-                                                $arr = (float)($record->other_allowance ?? 0);
-                                                $epf_s = (float)($record->epf_employers_share ?? 0);
-                                                $edli_s = (float)($record->edli_charges ?? 0);
-                                                $prorated = ($twd > 0) ? ($gs / $twd) * $dw : $gs;
-                                                $computedNet = $prorated + $arr + $epf_s + $edli_s;
-                                            @endphp
-                                            <td class="text-end fw-semibold">₹{{ number_format($computedNet, 2) }}</td>
+                                            <td class="text-end fw-semibold">₹{{ number_format($record->net_salary, 2) }}</td>
                                         </tr>
                                     @endforeach
                                 </tbody>
                             </table>
                         </div>
-                        
                         <!-- Passing the first active combination implicitly so the next step controller continues to work unmodified -->
                         @php
                             $firstRecord = $frozenPayrolls->first();

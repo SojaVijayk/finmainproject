@@ -138,6 +138,14 @@ class PayItemMasterController extends Controller
                     'salary.da as master_da',
                     'service.consolidated_pay'
                 )
+                // Enforce that the employee MUST have at least one frozen salary record in the system
+                // (Matches user's request: "only show i have freeze the employees in the salary management")
+                ->whereExists(function ($subquery) {
+                    $subquery->select(\DB::raw(1))
+                             ->from('employee_payroll')
+                             ->whereColumn('employee_payroll.p_id', 'project_employee.p_id')
+                             ->where('employee_payroll.is_frozen', 1);
+                })
                 // Enforce distinct on the exact combination of selected columns to prevent duplication fallout 
                 // from multiple service history joins without triggering ONLY_FULL_GROUP_BY MySQL mode
                 ->distinct()
@@ -252,11 +260,20 @@ class PayItemMasterController extends Controller
 
                 $calculatedAmount = 0;
                 if ($payItem->is_slab_based && $payItem->slabs->isNotEmpty()) {
+                    $matched = false;
+                    $maxSlab = $payItem->slabs->sortByDesc('salary_to')->first();
+                    
                     foreach ($payItem->slabs as $slab) {
                         if ($cumulativeGross >= $slab->salary_from && $cumulativeGross <= $slab->salary_to) {
                             $calculatedAmount = $slab->amount;
+                            $matched = true;
                             break;
                         }
+                    }
+                    
+                    // Fallback: If salary exceeds all defined slabs, pick the highest slab's amount
+                    if (!$matched && $cumulativeGross > $maxSlab->salary_to) {
+                        $calculatedAmount = $maxSlab->amount;
                     }
                 }
 
@@ -327,26 +344,41 @@ class PayItemMasterController extends Controller
             'professional tax'            => 'professional_tax',
             'pt'                          => 'professional_tax',
             'festival allowance'          => 'festival_allowance',
+            'festival'                    => 'festival_allowance',
+            'festival '                   => 'festival_allowance',
+            'bonus'                       => 'bonus',
+            'bonus '                      => 'bonus',
+            'bonus allowance'             => 'bonus',
+            'salary bonus'                => 'bonus',
+            'incentive'                   => 'bonus',
+            'prof tax'                    => 'professional_tax',
+            'p.tax'                       => 'professional_tax',
+            'tds'                         => 'tds',
             'tds 192 b'                   => 'tds_192_b',
             'tds 192b'                    => 'tds_192_b',
             'tds 194 j'                   => 'tds_194_j',
             'tds 194j'                    => 'tds_194_j',
             'esi employer'                => 'esi_employer',
-            'esi'                         => 'esi',
+            'esi'                         => 'esi_employer',
             'lic'                         => 'lic_others',
             'lic others'                  => 'lic_others',
             'epf employers share @ 12%'   => 'epf_employers_share',
             'epf employer'                => 'epf_employers_share',
-            'epf'                         => 'epf',
+            'epf'                         => 'epf_employers_share',
             'edli contribution and admin' => 'edli_charges',
             'edli'                        => 'edli_charges',
             'pf'                          => 'pf',
             'employer contribution'       => 'employer_contribution',
             'arrear'                      => 'other_allowance',
+            'arrears'                     => 'other_allowance',
         ];
 
         $normalizedPayItemName = strtolower(trim($payItem->name));
         $destColumn = $columnMap[$normalizedPayItemName] ?? (($payItem->type === 'Allowance') ? 'other_allowance' : 'others');
+
+        // Check if the item is a bonus or festival allowance for Net Salary math
+        $isFA = ($normalizedPayItemName === 'festival allowance' || $normalizedPayItemName === 'festival');
+        $isBonus = ($normalizedPayItemName === 'bonus' || $normalizedPayItemName === 'bonus allowance' || $normalizedPayItemName === 'salary bonus');
 
         $pIds    = $request->p_id;
         $amounts = $request->amount;
@@ -404,16 +436,25 @@ class PayItemMasterController extends Controller
                                        (float)($payroll->professional_tax ?? 0) +
                                        (float)($payroll->esi_employer ?? 0) +
                                        (float)($payroll->lic_others ?? 0) +
-                                       (float)($payroll->others ?? 0) +
-                                       (float)($payroll->festival_allowance ?? 0);
+                                       (float)($payroll->others ?? 0);
 
                     $grossSalary = (float)($payroll->gross_salary ?? 0);
                     $totalWorkingDays = (float)($payroll->total_working_days ?? 0);
                     $daysWorked = (float)($payroll->days_worked ?? 0);
                     $arrear = (float)($payroll->other_allowance ?? 0);
+                    $festivalAllowance = (float)($payroll->festival_allowance ?? 0);
+                    $bonus = (float)($payroll->bonus ?? 0);
+
+                    // If the current bill IS for Festival Allowance or Bonus, ensure we use the NEW value $amt
+                    if ($isFA) {
+                        $festivalAllowance = $amt;
+                    } elseif ($isBonus) {
+                        $bonus = $amt;
+                    }
 
                     $proratedSalary = ($totalWorkingDays > 0) ? ($grossSalary / $totalWorkingDays) * $daysWorked : $grossSalary;
-                    $computedGross = $proratedSalary + $arrear;
+                    // Festival Allowance and Bonus are earnings, so they add to calculated Gross Salary
+                    $computedGross = $proratedSalary + $arrear + $festivalAllowance + $bonus;
                     $netSalary = $computedGross - $totalDeductions;
 
                     \DB::table('employee_payroll')
@@ -421,6 +462,8 @@ class PayItemMasterController extends Controller
                         ->where('paymonth', $m)
                         ->where('year', $y)
                         ->update([
+                            'festival_allowance' => $festivalAllowance,
+                            'bonus' => $bonus,
                             'total_deductions' => $totalDeductions,
                             'net_salary' => $netSalary,
                         ]);

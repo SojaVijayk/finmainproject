@@ -11,12 +11,17 @@ class DeductionMasterController extends Controller
     {
         $pageConfigs = ['myLayout' => 'horizontal'];
         
-        // Fetch ALL frozen payroll records across all months/years/types
-        $frozenPayrolls = \DB::table('employee_payroll')
+        // Fetch ALL frozen payroll records across all months/years/types for this specific project
+        $query = \DB::table('employee_payroll')
             ->join('project_employee', 'project_employee.p_id', '=', 'employee_payroll.p_id')
             ->join('service', 'service.p_id', '=', 'employee_payroll.p_id')
-            ->where('employee_payroll.is_frozen', 1)
-            ->select(
+            ->where('employee_payroll.is_frozen', 1);
+
+        if ($project_id) {
+            $query->where('project_employee.project_id', $project_id);
+        }
+
+        $frozenPayrolls = $query->select(
                 'employee_payroll.*',
                 'project_employee.name',
                 'service.employment_type'
@@ -41,16 +46,32 @@ class DeductionMasterController extends Controller
             ->join('project_employee', 'project_employee.p_id', '=', 'employee_payroll.p_id')
             ->leftJoin('designations', 'designations.id', '=', 'project_employee.designation_id')
             ->leftJoin('service', 'service.p_id', '=', 'employee_payroll.p_id')
-            ->leftJoin('deduction_masters', 'deduction_masters.p_id', '=', 'employee_payroll.p_id')
-            ->where('employee_payroll.is_frozen', 1)
-            ->select(
+            ->leftJoin('deduction_masters', 'deduction_masters.p_id', '=', 'employee_payroll.p_id');
+
+        if ($project_id) {
+            $frozenPayrolls->where('project_employee.project_id', $project_id);
+        }
+
+        // Apply month/year filter if present
+        if ($request->filled('month') && $request->filled('year')) {
+            $frozenPayrolls->where('employee_payroll.paymonth', $request->month)
+                           ->where('employee_payroll.year', $request->year);
+        }
+
+        // Strictly show only frozen records as per user request
+        $frozenPayrolls->where('employee_payroll.is_frozen', 1);
+
+        $frozenPayrolls = $frozenPayrolls->select(
                 'employee_payroll.*',
+                'employee_payroll.professional_tax as payroll_professional_tax',
+                'employee_payroll.festival_allowance as payroll_festival_allowance',
+                'employee_payroll.bonus as payroll_bonus',
                 'project_employee.name',
                 'project_employee.bank_name',
                 'project_employee.account_no',
                 'project_employee.ifsc_code',
                 'project_employee.branch',
-                'designations.designation',
+                'service.role',
                 'service.employment_type',
                 'service.basic_pay',
                 'service.da',
@@ -93,10 +114,19 @@ class DeductionMasterController extends Controller
                 'deduction_masters.esi_employer as dm_esi_employer_flag',
                 'deduction_masters.esi_employer_value as dm_esi_employer_value',
                 'deduction_masters.esi_employer_type as dm_esi_employer_type',
-                'deduction_masters.esi_employer_amount as dm_esi_employer_amount'
+                'deduction_masters.esi_employer_amount as dm_esi_employer_amount',
+                'deduction_masters.festival_allowance as dm_festival_flag',
+                'deduction_masters.festival_allowance_value as dm_festival_value',
+                'deduction_masters.festival_allowance_type as dm_festival_type',
+                'deduction_masters.festival_allowance_amount as dm_festival_amount',
+                'deduction_masters.bonus as dm_bonus_flag',
+                'deduction_masters.bonus_value as dm_bonus_value',
+                'deduction_masters.bonus_type as dm_bonus_type',
+                'deduction_masters.bonus_amount as dm_bonus_amount'
             )
             // Ensure we use the latest service record for each employee to prevent duplicates
             ->whereRaw('service.id = (SELECT MAX(id) FROM service WHERE service.p_id = employee_payroll.p_id)')
+            ->orderBy('project_employee.name', 'asc')
             ->orderBy('employee_payroll.year', 'desc')
             ->orderBy('employee_payroll.paymonth', 'desc')
             ->get();
@@ -113,29 +143,31 @@ class DeductionMasterController extends Controller
             return redirect()->back()->with('error', 'No employees found to update.');
         }
 
-        foreach ($request->p_id as $pId) {
-            $rowMonth = $request->months[$pId] ?? null;
-            $rowYear = $request->years[$pId] ?? null;
+        foreach ($request->p_id as $key => $pId) {
+            // Data is passed with indices corresponding to the p_id[] array index to avoid month-based collisions
+            $rowMonth = $request->months[$key] ?? null;
+            $rowYear = $request->years[$key] ?? null;
 
             if (!$rowMonth || !$rowYear) {
                 continue;
             }
 
-            // Get deduction amounts from dynamic form fields
-            $tds = (float)($request->tds[$pId] ?? 0);
-            $epf = (float)($request->epf[$pId] ?? 0);
-            $pf = (float)($request->pf_ded[$pId] ?? 0);
-            $edli = (float)($request->edli[$pId] ?? 0);
-            $tds192b = (float)($request->tds_192_b[$pId] ?? 0);
-            $tds194j = (float)($request->tds_194_j[$pId] ?? 0);
-            $pt = (float)($request->professional_tax[$pId] ?? 0);
-            $esiEmployer = (float)($request->esi_employer[$pId] ?? 0);
-            $licOthers = (float)($request->lic_others[$pId] ?? 0);
-            $otherDed = (float)($request->other_ded[$pId] ?? 0);
-            $festivalAllowance = (float)($request->festival_allowance[$pId] ?? 0);
+            // Get deduction amounts from indexed arrays
+            $tds = (float)($request->tds[$key] ?? 0);
+            $epf = (float)($request->epf[$key] ?? 0);
+            $pf = (float)($request->pf_ded[$key] ?? 0);
+            $edli = (float)($request->edli[$key] ?? 0);
+            $tds192b = (float)($request->tds_192_b[$key] ?? 0);
+            $tds194j = (float)($request->tds_194_j[$key] ?? 0);
+            $pt = (float)($request->professional_tax[$key] ?? 0);
+            $esiEmployer = (float)($request->esi_employer[$key] ?? 0);
+            $licOthers = (float)($request->lic_others[$key] ?? 0);
+            $otherDed = (float)($request->other_ded[$key] ?? 0);
+            $festivalAllowance = (float)($request->festival_allowance[$key] ?? 0);
+            $bonus = (float)($request->bonus[$key] ?? 0);
 
-            // Calculate total deductions
-            $totalDeductions = $tds + $epf + $pf + $edli + $tds192b + $tds194j + $pt + $esiEmployer + $licOthers + $otherDed + $festivalAllowance;
+            // Calculate total deductions (excluding Festival Allowance which is an earning)
+            $totalDeductions = $tds + $epf + $pf + $edli + $tds192b + $tds194j + $pt + $esiEmployer + $licOthers + $otherDed;
 
             // Recompute net salary from prorated salary
             $payroll = \DB::table('employee_payroll')
@@ -152,7 +184,8 @@ class DeductionMasterController extends Controller
                 $arrear = (float)($payroll->other_allowance ?? 0);
 
                 $proratedSalary = ($totalWorkingDays > 0) ? ($grossSalary / $totalWorkingDays) * $daysWorked : $grossSalary;
-                $computedGross = $proratedSalary + $arrear;
+                // Festival Allowance and Bonus are earnings, so they add to calculated Gross Salary
+                $computedGross = $proratedSalary + $arrear + $festivalAllowance + $bonus;
                 $netSalary = $computedGross - $totalDeductions;
             }
 
@@ -172,6 +205,7 @@ class DeductionMasterController extends Controller
                     'lic_others' => $licOthers,
                     'others' => $otherDed,
                     'festival_allowance' => $festivalAllowance,
+                    'bonus' => $bonus,
                     'total_deductions' => $totalDeductions,
                     'net_salary' => $netSalary,
                 ]);

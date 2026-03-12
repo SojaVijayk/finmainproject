@@ -610,7 +610,7 @@ $(function () {
         calculateTotalBill();
     });
 
-    $('#selectAllEmployees').on('change', function () {
+    $('#selectAllEmp').on('change', function () {
         $('.emp-checkbox').prop('checked', $(this).is(':checked'));
         calculateTotalBill();
     });
