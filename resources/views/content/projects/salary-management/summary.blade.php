@@ -354,7 +354,9 @@ $(function() {
         var adminCharge = $('#admin_charge_percent').val() || 0;
         var note = $('#statement_note').val() || '';
         var baseUrl = $(this).data('url');
-        var fullUrl = baseUrl + '?p_ids=' + selectedIds.join(',') + '&admin_charge=' + encodeURIComponent(adminCharge) + '&columns=' + encodeURIComponent(selectedColumns.join(',')) + '&note=' + encodeURIComponent(note);
+        // Ensure we don't double up on parameters if baseUrl already has some
+        var separator = baseUrl.includes('?') ? '&' : '?';
+        var fullUrl = baseUrl + separator + 'p_ids=' + selectedIds.join(',') + '&admin_charge=' + encodeURIComponent(adminCharge) + '&columns=' + encodeURIComponent(selectedColumns.join(',')) + '&note=' + encodeURIComponent(note);
         
         // Hide modal
         var modalEl = document.getElementById('columnSelectionModal');

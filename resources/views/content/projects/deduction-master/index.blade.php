@@ -52,14 +52,9 @@
                                 </tbody>
                             </table>
                         </div>
-                        <!-- Passing the first active combination implicitly so the next step controller continues to work unmodified -->
-                        @php
-                            $firstRecord = $frozenPayrolls->first();
-                        @endphp
-                        <input type="hidden" name="month" value="{{ $firstRecord->paymonth }}">
-                        <input type="hidden" name="year" value="{{ $firstRecord->year }}">
-                        <input type="hidden" name="employment_type" value="{{ $firstRecord->employment_type }}">
-                        <input type="hidden" name="default_salary_id" value="{{ $firstRecord->salary_id }}">
+                        <div class="alert alert-info py-2 mb-0 mt-3" role="alert">
+                            <i class="ti ti-info-circle me-1 ti-xs"></i> All frozen employees across all months are listed. Click below to edit their deductions.
+                        </div>
 
                         <div class="mt-4 text-end">
                             <button type="submit" class="btn btn-primary">

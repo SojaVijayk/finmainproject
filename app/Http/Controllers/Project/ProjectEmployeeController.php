@@ -364,6 +364,7 @@ class ProjectEmployeeController extends Controller
               foreach ($deductionsArray as $ded) {
                   $origName = $ded['deduction_name'] ?? $ded['name'] ?? '';
                   $dedName = strtoupper(trim($origName));
+                  $calcType = $ded['calculation_type'] ?? 'fixed';
                   $destKey = $dedmap[$dedName] ?? null;
 
                   EmployeeDynamicDeduction::create([

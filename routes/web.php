@@ -692,7 +692,10 @@ Route::group(['middleware' => 'auth'], function () {
 
       // Deduction Master
       Route::get('/deduction-master/{project_id?}', [DeductionMasterController::class, 'index'])->name('deduction-master.index');
-      Route::post('/deduction-master/select-employees/{project_id?}', [DeductionMasterController::class, 'selectEmployees'])->name('deduction-master.select-employees');
+      Route::get('/deduction-master/salary-slip/{id}/{month}/{year}', [DeductionMasterController::class, 'generateSalarySlip'])->name('deduction-master.salary-slip');
+      Route::get('/deduction-master/salary-slip/pdf/{id}/{month}/{year}', [DeductionMasterController::class, 'downloadSalarySlipPdf'])->name('deduction-master.salary-slip-pdf');
+      Route::get('/deduction-master/salary-slip/word/{id}/{month}/{year}', [DeductionMasterController::class, 'downloadSalarySlipWord'])->name('deduction-master.salary-slip-word');
+      Route::match(['get', 'post'], '/deduction-master/select-employees/{project_id?}', [DeductionMasterController::class, 'selectEmployees'])->name('deduction-master.select-employees');
       Route::post('/deduction-master/store/{project_id?}', [DeductionMasterController::class, 'storeDeductions'])->name('deduction-master.store');
 
       // Pay Item Master
@@ -1347,5 +1350,5 @@ Route::prefix('pms/salary-management')->name('pms.salary-management.')->middlewa
     Route::match(['get', 'post'], '/calculation/{project_id?}', [App\Http\Controllers\Project\SalaryManagementController::class, 'calculation'])->name('calculation');
     Route::match(['get', 'post'], '/summary/{project_id?}', [App\Http\Controllers\Project\SalaryManagementController::class, 'summary'])->name('summary');
     Route::post('/store/{project_id?}', [App\Http\Controllers\Project\SalaryManagementController::class, 'store'])->name('store');
-    Route::get('/statement/{project_id}/{month}/{year}/{employment_type}', [App\Http\Controllers\Project\SalaryManagementController::class, 'statement'])->name('statement');
+    Route::get('/salary-statement', [App\Http\Controllers\Project\SalaryManagementController::class, 'statement'])->name('statement');
 });

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Project;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class DeductionMasterController extends Controller
 {
@@ -12,21 +13,21 @@ class DeductionMasterController extends Controller
         $pageConfigs = ['myLayout' => 'horizontal'];
         
         // Fetch ALL frozen payroll records across all months/years/types for this specific project
-        $query = \DB::table('employee_payroll')
+        $frozenPayrolls = \DB::table('employee_payroll')
             ->join('project_employee', 'project_employee.p_id', '=', 'employee_payroll.p_id')
             ->join('service', 'service.p_id', '=', 'employee_payroll.p_id')
-            ->where('employee_payroll.is_frozen', 1);
+            ->where('employee_payroll.is_frozen', 1)
+            ->whereRaw('service.id = (SELECT MAX(id) FROM service WHERE service.p_id = employee_payroll.p_id)');
 
         if ($project_id) {
-            $query->where('project_employee.project_id', $project_id);
+            $frozenPayrolls->where('project_employee.project_id', $project_id);
         }
 
-        $frozenPayrolls = $query->select(
+        $frozenPayrolls = $frozenPayrolls->select(
                 'employee_payroll.*',
                 'project_employee.name',
                 'service.employment_type'
             )
-            ->distinct()
             ->orderBy('employee_payroll.year', 'desc')
             ->orderBy('employee_payroll.paymonth', 'desc')
             ->get();
@@ -52,10 +53,15 @@ class DeductionMasterController extends Controller
             $frozenPayrolls->where('project_employee.project_id', $project_id);
         }
 
-        // Apply month/year filter if present
-        if ($request->filled('month') && $request->filled('year')) {
-            $frozenPayrolls->where('employee_payroll.paymonth', $request->month)
-                           ->where('employee_payroll.year', $request->year);
+        // Apply filters if present; otherwise show all frozen records for the project
+        if ($request->filled('month')) {
+            $frozenPayrolls->where('employee_payroll.paymonth', $request->month);
+        }
+        if ($request->filled('year')) {
+            $frozenPayrolls->where('employee_payroll.year', $request->year);
+        }
+        if ($request->filled('employment_type')) {
+            $frozenPayrolls->where('service.employment_type', $request->employment_type);
         }
 
         // Strictly show only frozen records as per user request
@@ -212,5 +218,175 @@ class DeductionMasterController extends Controller
         }
 
         return redirect()->route('pms.deduction-master.index', $project_id)->with('success', 'Deductions successfully updated and Net Salary recalculated!');
+    }
+    public function generateSalarySlip(Request $request, $id, $month, $year)
+    {
+        $data = $this->getSalarySlipData($id, $month, $year);
+        if (is_string($data)) {
+            return redirect()->back()->with('error', $data);
+        }
+
+        $payroll = $data['payroll'];
+        $netInWords = $data['netInWords'];
+        $dynamicDeductions = $data['dynamicDeductions'];
+        $pageConfigs = ['myLayout' => 'blank'];
+
+        $viewName = strtolower($payroll->employment_type) === 'deputation' 
+            ? 'content.projects.deduction-master.deputation-salary-slip' 
+            : 'content.projects.deduction-master.salary-slip';
+
+        return view($viewName, compact('payroll', 'pageConfigs', 'netInWords', 'dynamicDeductions'));
+    }
+
+    public function downloadSalarySlipPdf(Request $request, $id, $month, $year)
+    {
+        $data = $this->getSalarySlipData($id, $month, $year);
+        if (is_string($data)) {
+            return redirect()->back()->with('error', $data);
+        }
+
+        $payroll = $data['payroll'];
+        $netInWords = $data['netInWords'];
+        $dynamicDeductions = $data['dynamicDeductions'];
+        $isExport = true;
+
+        $viewName = strtolower($payroll->employment_type) === 'deputation' 
+            ? 'content.projects.deduction-master.deputation-salary-slip' 
+            : 'content.projects.deduction-master.salary-slip';
+
+        $pdf = Pdf::loadView($viewName, compact('payroll', 'netInWords', 'isExport', 'dynamicDeductions'))
+                  ->setPaper('a4', 'portrait');
+        
+        return $pdf->download("Salary_Slip_{$payroll->name}_{$month}_{$year}.pdf");
+    }
+
+    public function downloadSalarySlipWord(Request $request, $id, $month, $year)
+    {
+        $data = $this->getSalarySlipData($id, $month, $year);
+        if (is_string($data)) {
+            return redirect()->back()->with('error', $data);
+        }
+
+        $payroll = $data['payroll'];
+        $netInWords = $data['netInWords'];
+        $dynamicDeductions = $data['dynamicDeductions'];
+        $isExport = true;
+
+        $viewName = strtolower($payroll->employment_type) === 'deputation' 
+            ? 'content.projects.deduction-master.deputation-salary-slip' 
+            : 'content.projects.deduction-master.salary-slip';
+
+        $view = view($viewName, compact('payroll', 'netInWords', 'isExport', 'dynamicDeductions'))->render();
+        
+        $filename = "Salary_Slip_{$payroll->name}_{$month}_{$year}.doc";
+        
+        return response($view)
+            ->header('Content-Type', 'application/msword')
+            ->header('Content-Disposition', 'attachment; filename=' . $filename);
+    }
+
+    private function getSalarySlipData($id, $month, $year)
+    {
+        $payroll = \DB::table('employee_payroll')
+            ->join('project_employee', 'project_employee.p_id', '=', 'employee_payroll.p_id')
+            ->leftJoin('designations', 'designations.id', '=', 'project_employee.designation_id')
+            ->leftJoin('service', 'service.p_id', '=', 'employee_payroll.p_id')
+            ->leftJoin('projects', 'projects.id', '=', 'project_employee.project_id')
+            ->where('employee_payroll.p_id', $id)
+            ->where('employee_payroll.paymonth', $month)
+            ->where('employee_payroll.year', $year)
+            ->select(
+                'employee_payroll.*',
+                'project_employee.name',
+                'project_employee.pan_number',
+                'project_employee.bank_name',
+                'project_employee.account_no',
+                'project_employee.ifsc_code',
+                'project_employee.branch',
+                'designations.designation as designation_name',
+                'service.role',
+                'service.employment_type',
+                'service.basic_pay as service_basic',
+                'service.da as service_da',
+                'service.consolidated_pay',
+                'service.hra as service_hra',
+                'projects.title as project_name',
+                'project_employee.project_id'
+            )
+            ->whereRaw('service.id = (SELECT MAX(id) FROM service WHERE service.p_id = employee_payroll.p_id)')
+            ->first();
+
+        if (!$payroll) {
+            return 'Salary slip record not found.';
+        }
+
+        // Fetch all dynamic deductions for this period
+        // Note: In some systems, dynamic deductions are stored in employee_dynamic_deductions
+        // or mapped to master_dynamic_deductions.
+        $dynamicDeductions = \DB::table('employee_dynamic_deductions')
+            ->where('p_id', $id)
+            ->pluck('amount', 'deduction_name')
+            ->toArray();
+
+        return [
+            'payroll' => $payroll,
+            'netInWords' => $this->numberToWords($payroll->net_salary),
+            'dynamicDeductions' => $dynamicDeductions
+        ];
+    }
+
+    private function numberToWords($number)
+    {
+        $number = round($number, 2);
+        if ($number == 0) return 'Zero Rupees Only';
+        
+        $isNegative = $number < 0;
+        $number = abs($number);
+
+        $no = (int)floor($number);
+        $decimal = (int)round(($number - $no) * 100);
+        
+        // If decimal rounds up to 100, add 1 to $no and set decimal to 0
+        if ($decimal == 100) {
+            $no += 1;
+            $decimal = 0;
+        }
+
+        $hundred = null;
+        $digits_length = strlen((string)$no);
+        $i = 0;
+        $str = array();
+        $words = array(
+            0 => '', 1 => 'One', 2 => 'Two', 3 => 'Three', 4 => 'Four', 5 => 'Five', 6 => 'Six',
+            7 => 'Seven', 8 => 'Eight', 9 => 'Nine', 10 => 'Ten', 11 => 'Eleven', 12 => 'Twelve',
+            13 => 'Thirteen', 14 => 'Fourteen', 15 => 'Fifteen', 16 => 'Sixteen', 17 => 'Seventeen',
+            18 => 'Eighteen', 19 => 'Nineteen', 20 => 'Twenty', 30 => 'Thirty', 40 => 'Forty',
+            50 => 'Fifty', 60 => 'Sixty', 70 => 'Seventy', 80 => 'Eighty', 90 => 'Ninety'
+        );
+        $digits = array('', 'Hundred', 'Thousand', 'Lakh', 'Crore');
+        
+        $tempNo = $no;
+        while ($i < $digits_length) {
+            $divider = ($i == 2) ? 10 : 100;
+            $currentSegment = floor($tempNo % $divider);
+            $tempNo = floor($tempNo / $divider);
+            $i += ($divider == 10) ? 1 : 2;
+            
+            if ($currentSegment) {
+                $plural = (($counter = count($str)) && $currentSegment > 9) ? 's' : null;
+                $hundred = ($counter == 1 && $str[0]) ? ' and ' : null;
+                $str[] = ($currentSegment < 21) 
+                    ? $words[$currentSegment] . ' ' . $digits[$counter] . $plural . ' ' . $hundred 
+                    : $words[floor($currentSegment / 10) * 10] . ' ' . $words[$currentSegment % 10] . ' ' . $digits[$counter] . $plural . ' ' . $hundred;
+            } else {
+                $str[] = null;
+            }
+        }
+        
+        $Rupees = implode('', array_reverse(array_filter($str)));
+        $paise = ($decimal > 0) ? " and " . ($words[(int)($decimal / 10) * 10] . " " . $words[$decimal % 10]) . ' Paise' : '';
+        
+        $prefix = $isNegative ? 'Minus ' : '';
+        return ($Rupees || $paise) ? $prefix . trim($Rupees) . $paise . ' Rupees Only' : 'Zero Rupees Only';
     }
 }

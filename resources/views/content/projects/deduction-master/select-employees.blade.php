@@ -246,11 +246,32 @@
                                     <span class="summary-percentage-display">{{ number_format($displayedPercentage, 1) }}%</span>
                                 </td>
                                 <td class="text-center">
-                                    @if($payroll->is_frozen == 1)
-                                        <span class="badge bg-label-success"><i class="ti ti-check me-1 ti-xs"></i> Issued</span>
-                                    @else
-                                        <span class="badge bg-label-warning"><i class="ti ti-clock me-1 ti-xs"></i> Pending</span>
-                                    @endif
+                                    <div class="d-flex align-items-center justify-content-center gap-1">
+                                        @if($payroll->is_frozen == 1)
+                                            <span class="badge bg-label-success" title="Salary Issued"><i class="ti ti-check ti-xs"></i></span>
+                                        @else
+                                            <span class="badge bg-label-warning" title="Pending"><i class="ti ti-clock ti-xs"></i></span>
+                                        @endif
+                                        
+                                        <div class="btn-group">
+                                            <a href="{{ route('pms.deduction-master.salary-slip', [$payroll->p_id, $payroll->paymonth, $payroll->year]) }}" 
+                                               class="btn btn-sm btn-icon btn-label-primary" 
+                                               target="_blank" 
+                                               title="View Salary Slip">
+                                                <i class="ti ti-eye"></i>
+                                            </a>
+                                            <a href="{{ route('pms.deduction-master.salary-slip-pdf', [$payroll->p_id, $payroll->paymonth, $payroll->year]) }}" 
+                                               class="btn btn-sm btn-icon btn-label-danger" 
+                                               title="Download PDF">
+                                                <i class="ti ti-file-type-pdf"></i>
+                                            </a>
+                                            <a href="{{ route('pms.deduction-master.salary-slip-word', [$payroll->p_id, $payroll->paymonth, $payroll->year]) }}" 
+                                               class="btn btn-sm btn-icon btn-label-info" 
+                                               title="Download Word">
+                                                <i class="ti ti-file-text"></i>
+                                            </a>
+                                        </div>
+                                    </div>
                                 </td>
                             </tr>
                         @endforeach

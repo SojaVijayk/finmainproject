@@ -529,8 +529,12 @@ class SalaryManagementController extends Controller
             return redirect()->back()->with('error', 'Error processing payroll: ' . $e->getMessage());
         }
     }
-    public function statement(Request $request, $project_id, $month, $year, $employment_type)
+    public function statement(Request $request)
     {
+        $project_id = $request->project_id;
+        $month = $request->month;
+        $year = $request->year;
+        $employment_type = $request->employment_type;
         $pageConfigs = ['myLayout' => 'blank'];
         $project = \App\Models\Project::find($project_id);
 
