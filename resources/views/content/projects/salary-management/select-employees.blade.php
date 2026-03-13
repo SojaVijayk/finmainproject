@@ -20,7 +20,7 @@
       @csrf
       <input type="hidden" name="month" value="{{ $month }}">
       <input type="hidden" name="year" value="{{ $year }}">
-      <input type="hidden" name="employment_type" value="{{ $employmentType }}">
+      <input type="hidden" name="employment_type" value="{{ $employmentTypeId }}">
       <input type="hidden" name="default_salary_id" value="{{ $defaultSalaryId }}">
 
       <div class="table-responsive text-nowrap mb-4">
@@ -43,7 +43,7 @@
                 @if($employee->is_frozen)
                   <input type="checkbox" class="form-check-input" disabled title="Salary already frozen for this month">
                 @else
-                  <input type="checkbox" name="selected_employees[]" value="{{ $employee->p_id }}" class="form-check-input employee-checkbox">
+                  <input type="checkbox" name="selected_employees[]" value="{{ $employee->p_id }}" class="form-check-input employee-checkbox" {{ $employee->is_selected ? 'checked' : '' }}>
                 @endif
               </td>
               <td>
@@ -64,7 +64,7 @@
       </div>
 
       <div class="d-flex justify-content-between">
-        <a href="{{ route('pms.salary-management.index', $project_id) }}" class="btn btn-label-secondary">Back</a>
+        <a href="{{ route('pms.salary-management.index', ['project_id' => $project_id]) }}" onclick="window.location.href=this.href; return false;" class="btn btn-label-secondary">Back</a>
         <button type="submit" class="btn btn-primary" id="btn-confirm-selection" {{ $employees->isEmpty() ? 'disabled' : '' }}>Confirm Selection</button>
       </div>
     </form>

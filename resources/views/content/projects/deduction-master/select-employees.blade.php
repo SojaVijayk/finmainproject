@@ -19,7 +19,7 @@
              <a href="{{ route('pms.pay-item-master.index', $project_id ?? '') }}" class="btn btn-label-primary me-2">
                 <i class="ti ti-settings me-1"></i> Pay Item Master
             </a>
-             <a href="{{ route('pms.deduction-master.index', $project_id) }}" class="btn btn-label-secondary">
+             <a href="{{ route('pms.employees.project-index', ['id' => $project_id]) }}" class="btn btn-label-secondary">
                 <i class="ti ti-arrow-left me-1"></i> Back
             </a>
         </div>
@@ -62,6 +62,13 @@
                             <th style="width: 180px;">TDS 194 J</th>
                             <th style="width: 180px;">ESI EMPLOYER</th>
                             <th style="width: 180px;">LIC</th>
+                            <th style="width: 180px;">MEDISEP</th>
+                            <th style="width: 180px;">GPF</th>
+                            <th style="width: 180px;">SLI 1</th>
+                            <th style="width: 180px;">SLI 2</th>
+                            <th style="width: 180px;">SLI 3</th>
+                            <th style="width: 180px;">GIS</th>
+                            <th style="width: 180px;">GPAIS</th>
                             <th style="width: 150px;">Prof. Tax</th>
                             <th style="width: 150px;">Festival Allowance</th>
                             <th style="width: 150px;">Bonus</th>
@@ -110,6 +117,13 @@
                                 $uiPt = resolveDeductionUI($payroll->payroll_professional_tax ?? 0, $payroll->dm_professional_tax_value, $payroll->dm_professional_tax_type, $payroll->dm_professional_tax_amount);
                                 $uiEsi = resolveDeductionUI($payroll->esi_employer ?? 0, $payroll->dm_esi_employer_value, $payroll->dm_esi_employer_type, $payroll->dm_esi_employer_amount);
                                 $uiLic = resolveDeductionUI($payroll->lic_others ?? 0, $payroll->dm_lic_value, $payroll->dm_lic_type, $payroll->dm_lic_amount);
+                                $uiMedisep = resolveDeductionUI($payroll->medisep ?? 0, $payroll->dm_medisep_value, $payroll->dm_medisep_type, $payroll->dm_medisep_amount);
+                                $uiGpf = resolveDeductionUI($payroll->gpf ?? 0, $payroll->dm_gpf_value, $payroll->dm_gpf_type, $payroll->dm_gpf_amount);
+                                $uiSli1 = resolveDeductionUI($payroll->sli1 ?? 0, $payroll->dm_sli1_value, $payroll->dm_sli1_type, $payroll->dm_sli1_amount);
+                                $uiSli2 = resolveDeductionUI($payroll->sli2 ?? 0, $payroll->dm_sli2_value, $payroll->dm_sli2_type, $payroll->dm_sli2_amount);
+                                $uiSli3 = resolveDeductionUI($payroll->sli3 ?? 0, $payroll->dm_sli3_value, $payroll->dm_sli3_type, $payroll->dm_sli3_amount);
+                                $uiGis = resolveDeductionUI($payroll->gis ?? 0, $payroll->dm_gis_value, $payroll->dm_gis_type, $payroll->dm_gis_amount);
+                                $uiGpais = resolveDeductionUI($payroll->gpais ?? 0, $payroll->dm_gpais_value, $payroll->dm_gpais_type, $payroll->dm_gpais_amount);
                                 $uiOther = resolveDeductionUI($payroll->others ?? 0, $payroll->dm_other_value, $payroll->dm_other_type, $payroll->dm_other_amount);
                                 $uiFa = resolveDeductionUI($payroll->payroll_festival_allowance ?? 0, $payroll->dm_festival_value, $payroll->dm_festival_type, $payroll->dm_festival_amount);
                                 $uiBonus = resolveDeductionUI($payroll->payroll_bonus ?? 0, $payroll->dm_bonus_value, $payroll->dm_bonus_type, $payroll->dm_bonus_amount);
@@ -129,7 +143,9 @@
                                 // Sum ALL deduction amounts for net salary computation
                                 $allDeductionAmts = $uiTds['amt'] + $uiEpf['amt'] + $uiPf['amt'] + $uiEdli['amt'] +
                                                     $ui192['amt'] + $ui194['amt'] + $uiPt['amt'] + $uiEsi['amt'] + 
-                                                    $uiLic['amt'] + $uiOther['amt'];
+                                                    $uiLic['amt'] + $uiMedisep['amt'] + $uiGpf['amt'] + 
+                                                    $uiSli1['amt'] + $uiSli2['amt'] + $uiSli3['amt'] + 
+                                                    $uiGis['amt'] + $uiGpais['amt'] + $uiOther['amt'];
                                 
                                 $computedNetSalary = $computedGrossSalary - $allDeductionAmts;
                                 $displayedPercentage = ($grossSalary > 0) ? ($computedNetSalary / $grossSalary) * 100 : 0;
@@ -172,7 +188,6 @@
                                         ['key' => 'edli',             'label' => 'EDLI',             'flag' => $payroll->dm_edli_flag || $uiEdli['amt'] > 0,             'ui' => $uiEdli],
                                         ['key' => 'tds_192_b',        'label' => 'TDS 192 B',        'flag' => $payroll->dm_tds_192_b_flag || $ui192['amt'] > 0,        'ui' => $ui192],
                                         ['key' => 'tds_194_j',        'label' => 'TDS 194 J',        'flag' => $payroll->dm_tds_194_j_flag || $ui194['amt'] > 0,        'ui' => $ui194],
-                                        // Professional Tax is explicitly excluded here as it's governed by Pay Item Master natively
                                         ['key' => 'esi_employer',     'label' => 'ESI EMPLOYER',     'flag' => $payroll->dm_esi_employer_flag || $uiEsi['amt'] > 0,     'ui' => $uiEsi],
                                         ['key' => 'lic_others',       'label' => 'LIC',              'flag' => $payroll->dm_lic_flag || $uiLic['amt'] > 0,              'ui' => $uiLic],
                                         ['key' => 'other_ded',        'label' => 'Other',            'flag' => $payroll->dm_other_flag || $uiOther['amt'] > 0,            'ui' => $uiOther],
@@ -180,7 +195,7 @@
                                 @endphp
 
                                 @php
-                                    // Split deductions to insert Prof Tax and Festival Allowance after LIC
+                                    // Split deductions to insert always-editable sequence after LIC
                                     $mainDeductions = array_slice($deductionColumns, 0, 8); // TDS to LIC
                                     $otherDeduction = array_slice($deductionColumns, 8, 1); // Other
                                 @endphp
@@ -203,6 +218,28 @@
                                     @endif
                                 </td>
                                 @endforeach
+
+                                <td class="text-center align-middle" style="background-color: #f8f9fa;">
+                                    <input type="number" name="medisep[{{ $index }}]" class="form-control form-control-sm text-end attr-medisep bg-white" value="{{ $uiMedisep['amt'] }}" style="min-width: 90px; border-color: #6c757d;" min="0" step="0.01">
+                                </td>
+                                <td class="text-center align-middle" style="background-color: #f8f9fa;">
+                                    <input type="number" name="gpf[{{ $index }}]" class="form-control form-control-sm text-end attr-gpf bg-white" value="{{ $uiGpf['amt'] }}" style="min-width: 90px; border-color: #6c757d;" min="0" step="0.01">
+                                </td>
+                                <td class="text-center align-middle" style="background-color: #f8f9fa;">
+                                    <input type="number" name="sli1[{{ $index }}]" class="form-control form-control-sm text-end attr-sli1 bg-white" value="{{ $uiSli1['amt'] }}" style="min-width: 90px; border-color: #6c757d;" min="0" step="0.01">
+                                </td>
+                                <td class="text-center align-middle" style="background-color: #f8f9fa;">
+                                    <input type="number" name="sli2[{{ $index }}]" class="form-control form-control-sm text-end attr-sli2 bg-white" value="{{ $uiSli2['amt'] }}" style="min-width: 90px; border-color: #6c757d;" min="0" step="0.01">
+                                </td>
+                                <td class="text-center align-middle" style="background-color: #f8f9fa;">
+                                    <input type="number" name="sli3[{{ $index }}]" class="form-control form-control-sm text-end attr-sli3 bg-white" value="{{ $uiSli3['amt'] }}" style="min-width: 90px; border-color: #6c757d;" min="0" step="0.01">
+                                </td>
+                                <td class="text-center align-middle" style="background-color: #f8f9fa;">
+                                    <input type="number" name="gis[{{ $index }}]" class="form-control form-control-sm text-end attr-gis bg-white" value="{{ $uiGis['amt'] }}" style="min-width: 90px; border-color: #6c757d;" min="0" step="0.01">
+                                </td>
+                                <td class="text-center align-middle" style="background-color: #f8f9fa;">
+                                    <input type="number" name="gpais[{{ $index }}]" class="form-control form-control-sm text-end attr-gpais bg-white" value="{{ $uiGpais['amt'] }}" style="min-width: 90px; border-color: #6c757d;" min="0" step="0.01">
+                                </td>
 
                                 <td class="text-center align-middle" style="background-color: #f8f9fa;">
                                     <input type="number" name="professional_tax[{{ $index }}]" class="form-control form-control-sm text-end attr-professional-tax bg-white" value="{{ $uiPt['amt'] }}" style="min-width: 90px; border-color: #7367f0;" min="0" step="0.01" title="Value from Pay Item Master (editable)">
@@ -317,6 +354,15 @@ $(document).ready(function() {
             var profTax = parseFloat(row.find('.attr-professional-tax').val()) || 0;
             totalDeductions += profTax;
             
+            // New deductions
+            totalDeductions += parseFloat(row.find('.attr-medisep').val()) || 0;
+            totalDeductions += parseFloat(row.find('.attr-gpf').val()) || 0;
+            totalDeductions += parseFloat(row.find('.attr-sli1').val()) || 0;
+            totalDeductions += parseFloat(row.find('.attr-sli2').val()) || 0;
+            totalDeductions += parseFloat(row.find('.attr-sli3').val()) || 0;
+            totalDeductions += parseFloat(row.find('.attr-gis').val()) || 0;
+            totalDeductions += parseFloat(row.find('.attr-gpais').val()) || 0;
+            
             // 3. FINAL NET
             var currentNetSalary = totalEarnings - totalDeductions;
             
@@ -341,7 +387,7 @@ $(document).ready(function() {
     }
 
     // Trigger calculation on input change for readonly generated allowances
-    $(document).on('input change', '.attr-festival-allowance, .attr-bonus, .attr-professional-tax', function() {
+    $(document).on('input change', '.attr-festival-allowance, .attr-bonus, .attr-professional-tax, .attr-medisep, .attr-gpf, .attr-sli1, .attr-sli2, .attr-sli3, .attr-gis, .attr-gpais', function() {
         calculateNetSalary();
     });
 

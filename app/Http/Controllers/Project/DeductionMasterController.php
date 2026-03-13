@@ -128,7 +128,35 @@ class DeductionMasterController extends Controller
                 'deduction_masters.bonus as dm_bonus_flag',
                 'deduction_masters.bonus_value as dm_bonus_value',
                 'deduction_masters.bonus_type as dm_bonus_type',
-                'deduction_masters.bonus_amount as dm_bonus_amount'
+                'deduction_masters.bonus_amount as dm_bonus_amount',
+                'deduction_masters.medisep as dm_medisep_flag',
+                'deduction_masters.medisep_value as dm_medisep_value',
+                'deduction_masters.medisep_type as dm_medisep_type',
+                'deduction_masters.medisep_amount as dm_medisep_amount',
+                'deduction_masters.gpf as dm_gpf_flag',
+                'deduction_masters.gpf_value as dm_gpf_value',
+                'deduction_masters.gpf_type as dm_gpf_type',
+                'deduction_masters.gpf_amount as dm_gpf_amount',
+                'deduction_masters.sli1 as dm_sli1_flag',
+                'deduction_masters.sli1_value as dm_sli1_value',
+                'deduction_masters.sli1_type as dm_sli1_type',
+                'deduction_masters.sli1_amount as dm_sli1_amount',
+                'deduction_masters.sli2 as dm_sli2_flag',
+                'deduction_masters.sli2_value as dm_sli2_value',
+                'deduction_masters.sli2_type as dm_sli2_type',
+                'deduction_masters.sli2_amount as dm_sli2_amount',
+                'deduction_masters.sli3 as dm_sli3_flag',
+                'deduction_masters.sli3_value as dm_sli3_value',
+                'deduction_masters.sli3_type as dm_sli3_type',
+                'deduction_masters.sli3_amount as dm_sli3_amount',
+                'deduction_masters.gis as dm_gis_flag',
+                'deduction_masters.gis_value as dm_gis_value',
+                'deduction_masters.gis_type as dm_gis_type',
+                'deduction_masters.gis_amount as dm_gis_amount',
+                'deduction_masters.gpais as dm_gpais_flag',
+                'deduction_masters.gpais_value as dm_gpais_value',
+                'deduction_masters.gpais_type as dm_gpais_type',
+                'deduction_masters.gpais_amount as dm_gpais_amount'
             )
             // Ensure we use the latest service record for each employee to prevent duplicates
             ->whereRaw('service.id = (SELECT MAX(id) FROM service WHERE service.p_id = employee_payroll.p_id)')
@@ -168,12 +196,20 @@ class DeductionMasterController extends Controller
             $pt = (float)($request->professional_tax[$key] ?? 0);
             $esiEmployer = (float)($request->esi_employer[$key] ?? 0);
             $licOthers = (float)($request->lic_others[$key] ?? 0);
+            $medisep = (float)($request->medisep[$key] ?? 0);
+            $gpf = (float)($request->gpf[$key] ?? 0);
+            $sli1 = (float)($request->sli1[$key] ?? 0);
+            $sli2 = (float)($request->sli2[$key] ?? 0);
+            $sli3 = (float)($request->sli3[$key] ?? 0);
+            $gis = (float)($request->gis[$key] ?? 0);
+            $gpais = (float)($request->gpais[$key] ?? 0);
             $otherDed = (float)($request->other_ded[$key] ?? 0);
             $festivalAllowance = (float)($request->festival_allowance[$key] ?? 0);
             $bonus = (float)($request->bonus[$key] ?? 0);
 
             // Calculate total deductions (excluding Festival Allowance which is an earning)
-            $totalDeductions = $tds + $epf + $pf + $edli + $tds192b + $tds194j + $pt + $esiEmployer + $licOthers + $otherDed;
+            $totalDeductions = $tds + $epf + $pf + $edli + $tds192b + $tds194j + $pt + $esiEmployer + $licOthers + 
+                               $medisep + $gpf + $sli1 + $sli2 + $sli3 + $gis + $gpais + $otherDed;
 
             // Recompute net salary from prorated salary
             $payroll = \DB::table('employee_payroll')
@@ -209,6 +245,13 @@ class DeductionMasterController extends Controller
                     'professional_tax' => $pt,
                     'esi_employer' => $esiEmployer,
                     'lic_others' => $licOthers,
+                    'medisep' => $medisep,
+                    'gpf' => $gpf,
+                    'sli1' => $sli1,
+                    'sli2' => $sli2,
+                    'sli3' => $sli3,
+                    'gis' => $gis,
+                    'gpais' => $gpais,
                     'others' => $otherDed,
                     'festival_allowance' => $festivalAllowance,
                     'bonus' => $bonus,
@@ -231,7 +274,9 @@ class DeductionMasterController extends Controller
         $dynamicDeductions = $data['dynamicDeductions'];
         $pageConfigs = ['myLayout' => 'blank'];
 
-        $viewName = strtolower($payroll->employment_type) === 'deputation' 
+        $isDeputation = $this->isDeputationSalary($payroll);
+
+        $viewName = $isDeputation 
             ? 'content.projects.deduction-master.deputation-salary-slip' 
             : 'content.projects.deduction-master.salary-slip';
 
@@ -250,7 +295,9 @@ class DeductionMasterController extends Controller
         $dynamicDeductions = $data['dynamicDeductions'];
         $isExport = true;
 
-        $viewName = strtolower($payroll->employment_type) === 'deputation' 
+        $isDeputation = $this->isDeputationSalary($payroll);
+
+        $viewName = $isDeputation 
             ? 'content.projects.deduction-master.deputation-salary-slip' 
             : 'content.projects.deduction-master.salary-slip';
 
@@ -272,7 +319,9 @@ class DeductionMasterController extends Controller
         $dynamicDeductions = $data['dynamicDeductions'];
         $isExport = true;
 
-        $viewName = strtolower($payroll->employment_type) === 'deputation' 
+        $isDeputation = $this->isDeputationSalary($payroll);
+
+        $viewName = $isDeputation 
             ? 'content.projects.deduction-master.deputation-salary-slip' 
             : 'content.projects.deduction-master.salary-slip';
 
@@ -311,7 +360,8 @@ class DeductionMasterController extends Controller
                 'service.consolidated_pay',
                 'service.hra as service_hra',
                 'projects.title as project_name',
-                'project_employee.project_id'
+                'project_employee.project_id',
+                'project_employee.employment_type as pe_employment_type'
             )
             ->whereRaw('service.id = (SELECT MAX(id) FROM service WHERE service.p_id = employee_payroll.p_id)')
             ->first();
@@ -330,12 +380,12 @@ class DeductionMasterController extends Controller
 
         return [
             'payroll' => $payroll,
-            'netInWords' => $this->numberToWords($payroll->net_salary),
+            'netInWords' => $this->numberToWords($payroll->net_salary, $this->isDeputationSalary($payroll)),
             'dynamicDeductions' => $dynamicDeductions
         ];
     }
 
-    private function numberToWords($number)
+    private function numberToWords($number, $isDeputation = false)
     {
         $number = round($number, 2);
         if ($number == 0) return 'Zero Rupees Only';
@@ -384,9 +434,24 @@ class DeductionMasterController extends Controller
         }
         
         $Rupees = implode('', array_reverse(array_filter($str)));
-        $paise = ($decimal > 0) ? " and " . ($words[(int)($decimal / 10) * 10] . " " . $words[$decimal % 10]) . ' Paise' : '';
+        $paise = ($decimal > 0) ? " and " . (isset($words[(int)($decimal / 10) * 10]) ? $words[(int)($decimal / 10) * 10] : '') . " " . (isset($words[$decimal % 10]) ? $words[$decimal % 10] : '') . ' Paise' : '';
         
         $prefix = $isNegative ? 'Minus ' : '';
-        return ($Rupees || $paise) ? $prefix . trim($Rupees) . $paise . ' Rupees Only' : 'Zero Rupees Only';
+        if ($isDeputation) {
+            return ($Rupees || $paise) ? $prefix . 'Rupees ' . trim($Rupees) . $paise . ' Only' : 'Zero Rupees Only';
+        } else {
+            return ($Rupees || $paise) ? $prefix . trim($Rupees) . $paise . ' Rupees Only' : 'Zero Rupees Only';
+        }
+    }
+
+    private function isDeputationSalary($payroll)
+    {
+        if (!$payroll) return false;
+        
+        $employmentType = trim(strtolower($payroll->employment_type ?? $payroll->pe_employment_type ?? ''));
+        $role = trim(strtolower($payroll->role ?? ''));
+
+        return $employmentType === 'deputation' || 
+               in_array($role, ['deputation offier', 'deputation officer', 'deputation officerr']);
     }
 }

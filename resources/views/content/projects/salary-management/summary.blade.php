@@ -30,7 +30,7 @@
       @csrf
       <input type="hidden" name="month" value="{{ $month }}">
       <input type="hidden" name="year" value="{{ $year }}">
-      <input type="hidden" name="employment_type" value="{{ $employmentType }}">
+      <input type="hidden" name="employment_type" value="{{ $employmentTypeId }}">
       <input type="hidden" name="freeze" id="freeze-input" value="0">
 
 
@@ -59,7 +59,7 @@
             @php $isFrozen = $data['is_frozen'] ?? 0; @endphp
             <tr class="employee-row {{ $isFrozen ? 'table-secondary text-muted' : '' }}">
               <td>
-                <input type="checkbox" class="form-check-input row-checkbox" value="{{ $data['p_id'] }}" {{ $isFrozen ? 'disabled' : 'checked' }}>
+                <input type="checkbox" name="process_p_ids[]" class="form-check-input row-checkbox" value="{{ $data['p_id'] }}" {{ $isFrozen ? 'disabled' : 'checked' }}>
               </td>
               <td>
                 <div class="d-flex flex-column">
@@ -140,8 +140,8 @@
 
       <div class="d-flex justify-content-between align-items-center">
         <div>
-            <a href="{{ route('pms.salary-management.calculation', ['project_id' => $project_id, 'month' => $month, 'year' => $year, 'employment_type' => $employmentType]) }}" class="btn btn-label-secondary">Back</a>
-            <button type="button" id="btn-generate-statement-modal" data-bs-toggle="modal" data-bs-target="#columnSelectionModal" class="btn btn-info disabled" style="pointer-events: none; opacity: 0.6;">
+            <a href="{{ route('pms.salary-management.calculation', ['project_id' => $project_id]) }}" onclick="window.location.href=this.href; return false;" class="btn btn-label-secondary">Back</a>
+            <button type="button" id="btn-generate-statement-modal" data-bs-toggle="modal" data-bs-target="#columnSelectionModal" class="btn btn-info {{ $hasProcessedRecords ? '' : 'disabled' }}" style="{{ $hasProcessedRecords ? '' : 'pointer-events: none; opacity: 0.6;' }}">
                 <i class="ti ti-file-invoice me-1"></i> Generate Statement
             </button>
         </div>
@@ -265,7 +265,7 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Close</button>
-        <button type="button" class="btn btn-primary" id="btn-confirm-generate" data-url="{{ route('pms.salary-management.statement', ['project_id' => $project_id, 'month' => $month, 'year' => $year, 'employment_type' => $employmentType]) }}">Generate PDF</button>
+        <button type="button" class="btn btn-primary" id="btn-confirm-generate" data-url="{{ route('pms.salary-management.statement', ['project_id' => $project_id, 'month' => $month, 'year' => $year, 'employment_type' => $employmentTypeId]) }}">Generate PDF</button>
       </div>
     </div>
   </div>
@@ -365,22 +365,16 @@ $(function() {
             modal.hide();
         }
 
-        window.open(fullUrl, '_blank');
+        window.location.href = fullUrl;
     });
 
     // 5. AJAX Submission Function
     function submitForm() {
         var form = $('#summary-form');
         
-        // We need to disable inputs for unchecked rows so they are not submitted
-        $('.employee-row').each(function() {
-            var row = $(this);
-            if (!row.find('.row-checkbox').is(':checked')) {
-                row.find('.hidden-inputs input').prop('disabled', true);
-            } else {
-                row.find('.hidden-inputs input').prop('disabled', false);
-            }
-        });
+        // Total Persistence: We no longer disable hidden inputs for unchecked rows. 
+        // This ensures the backend receives ALL rows and can sync the session fully.
+        $('.hidden-inputs input').prop('disabled', false);
         
         // Check if at least one is selected
         if ($('.row-checkbox:checked').length === 0) {

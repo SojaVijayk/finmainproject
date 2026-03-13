@@ -1345,10 +1345,10 @@ Route::prefix('audit')
 
 // Salary Management Routes
 Route::prefix('pms/salary-management')->name('pms.salary-management.')->middleware(['auth'])->group(function () {
-    Route::get('/{project_id?}', [App\Http\Controllers\Project\SalaryManagementController::class, 'index'])->name('index');
     Route::match(['get', 'post'], '/select-employees/{project_id?}', [App\Http\Controllers\Project\SalaryManagementController::class, 'selectEmployees'])->name('select-employees');
     Route::match(['get', 'post'], '/calculation/{project_id?}', [App\Http\Controllers\Project\SalaryManagementController::class, 'calculation'])->name('calculation');
     Route::match(['get', 'post'], '/summary/{project_id?}', [App\Http\Controllers\Project\SalaryManagementController::class, 'summary'])->name('summary');
     Route::post('/store/{project_id?}', [App\Http\Controllers\Project\SalaryManagementController::class, 'store'])->name('store');
-    Route::get('/salary-statement', [App\Http\Controllers\Project\SalaryManagementController::class, 'statement'])->name('statement');
+    Route::get('/salary-statement/{project_id?}', [App\Http\Controllers\Project\SalaryManagementController::class, 'statement'])->name('statement');
+    Route::get('/{project_id?}', [App\Http\Controllers\Project\SalaryManagementController::class, 'index'])->name('index');
 });

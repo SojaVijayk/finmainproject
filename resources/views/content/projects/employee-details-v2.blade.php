@@ -391,7 +391,12 @@
           </div>
           <div class="col-12 col-md-6">
             <label class="form-label" for="edit_role">Role</label>
-            <input type="text" id="edit_role" name="role" class="form-control" placeholder="System Administrator" />
+            <select id="edit_role" name="role" class="form-select">
+              <option value="">Select Role</option>
+              @foreach ($serviceRoles as $role)
+                <option value="{{ $role }}">{{ $role }}</option>
+              @endforeach
+            </select>
           </div>
           <div class="col-12 col-md-6">
             <label class="form-label" for="edit_pay_type">Pay Type</label>
@@ -872,7 +877,7 @@ $(function() {
         $('#edit_pay_type').val(data.pay_type || 'Monthly').trigger('change');
 
         $('#edit_department').val(data.department || '');
-        $('#edit_role').val(data.role || '');
+        $('#edit_role').val(data.role || '').trigger('change');
         
         $('#edit_consolidated_pay').val(data.consolidated_pay || '');
         $('#edit_basic_pay').val(data.basic_pay || '');

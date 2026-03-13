@@ -1,96 +1,95 @@
-@extends('layouts/blankLayout')
-
-@section('title', 'Salary Statement')
-
-@section('page-style')
-<style>
-    body {
-        font-family: 'Times New Roman', Times, serif;
-        color: #000;
-        background: #fff;
-    }
-    .invoice-container {
-        padding: 20px;
-        max-width: 900px;
-        margin: 0 auto;
-    }
-    .header {
-        text-align: center;
-        margin-bottom: 30px;
-    }
-    .company-name {
-        font-weight: bold;
-        font-size: 24px;
-        text-transform: uppercase;
-        margin-bottom: 5px;
-    }
-    .statement-title {
-        font-weight: bold;
-        font-size: 18px;
-    }
-    .table-custom {
-        width: 100%;
-        border-collapse: collapse;
-        margin-bottom: 20px;
-    }
-    .table-custom th, .table-custom td {
-        border: 1px solid #000;
-        padding: 8px;
-        text-align: left;
-        font-size: 14px;
-    }
-    .table-custom th {
-        text-align: center;
-        font-weight: bold;
-        background-color: #e0e0e0;
-    }
-    .text-end {
-        text-align: right !important;
-    }
-    .text-center {
-        text-align: center !important;
-    }
-    .summary-block {
-        width: 400px;
-        margin-left: auto;
-        display: flex;
-        flex-direction: column;
-        align-items: flex-end;
-        margin-top: 20px;
-    }
-    .summary-row {
-        display: flex;
-        justify-content: space-between;
-        width: 100%;
-        margin-bottom: 5px;
-        font-weight: bold;
-        font-size: 14px;
-    }
-    .summary-label {
-        text-align: left;
-        padding-right: 20px;
-    }
-    .summary-value {
-        text-align: right;
-        min-width: 100px;
-    }
-    .double-underline {
-        border-bottom: 3px double #000;
-    }
-    
-    @media print {
-        @page { size: landscape; margin: 1cm; }
-        .no-print { display: none; }
-        body { background: #fff; }
-    }
-</style>
-@endsection
-
-@section('content')
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+    <title>Salary Statement</title>
+    <style>
+        @page {
+            size: landscape;
+            margin: 1cm;
+        }
+        body {
+            font-family: 'DejaVu Sans', sans-serif;
+            color: #000;
+            background: #fff;
+            margin: 0;
+            font-size: 12px;
+        }
+        .invoice-container {
+            padding: 10px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .company-name {
+            font-weight: bold;
+            font-size: 20px;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        .statement-title {
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .table-custom {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+        }
+        .table-custom th, .table-custom td {
+            border: 1px solid #000;
+            padding: 6px;
+            text-align: left;
+        }
+        .table-custom th {
+            text-align: center;
+            font-weight: bold;
+            background-color: #f2f2f2;
+        }
+        .text-end {
+            text-align: right !important;
+        }
+        .text-center {
+            text-align: center !important;
+        }
+        .summary-block {
+            width: 350px;
+            margin-left: auto;
+            margin-top: 15px;
+        }
+        .summary-row {
+            display: block;
+            margin-bottom: 4px;
+            font-weight: bold;
+        }
+        .summary-label {
+            display: inline-block;
+            width: 200px;
+        }
+        .summary-value {
+            display: inline-block;
+            width: 130px;
+            text-align: right;
+        }
+        .double-underline {
+            border-bottom: 3px double #000;
+        }
+        .no-print {
+            display: none;
+        }
+    </style>
+</head>
+<body>
 <div class="invoice-container">
-    <div class="no-print mb-4 text-end">
-        <button onclick="window.print()" class="btn btn-primary">Print Statement</button>
-        <button onclick="window.close()" class="btn btn-secondary">Close</button>
+    <div class="no-print" style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+        <a href="{{ route('pms.salary-management.summary', ['project_id' => $project->id]) }}" onclick="window.location.href=this.href; return false;" style="background: #ea5455; color: white; text-decoration: none; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; font-family: sans-serif; display: inline-block;">
+            ← Back
+        </a>
+        <a href="#" onclick="let url = new URL(window.location.href); url.searchParams.set('format', 'pdf'); window.location.href = url.toString(); return false;" style="background: #7367f0; color: white; text-decoration: none; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; font-family: sans-serif; display: inline-block;">
+            Print
+        </a>
     </div>
 
     @php
@@ -119,18 +118,18 @@
         <thead>
             @if($showInvoiceStyle)
             <tr>
-                <th colspan="{{ count($columns) }}" style="font-size: 16px; padding: 10px;">
+                <th colspan="{{ count($columns) }}" style="font-size: 14px; padding: 10px;">
                     Attendance and Salary details of the persons engaged through CMD from {{ $startDateStr }} to {{ $endDateStr }}
                 </th>
             </tr>
             <tr>
-                <th colspan="{{ count($columns) }}" style="font-size: 16px; padding: 10px;">
+                <th colspan="{{ count($columns) }}" style="font-size: 14px; padding: 10px;">
                     {{ $project->name ?? 'K.C.M.M.F. Ltd., Head Office, Thiruvananthapuram' }}
                 </th>
             </tr>
             @endif
             <tr>
-                @if(in_array('slno', $columns))<th style="width: 50px;">Sl. No</th>@endif
+                @if(in_array('slno', $columns))<th style="width: 40px;">Sl. No</th>@endif
                 @if(in_array('name', $columns))<th>Names</th>@endif
                 @if(in_array('designation', $columns))<th>Designation</th>@endif
                 @if(in_array('doj', $columns))<th>Date of Joining</th>@endif
@@ -185,7 +184,7 @@
                 $totalPf += $row->pf ?? 0;
             @endphp
             @endforeach
-            <tr style="font-weight: bold; background-color: #e0e0e0;">
+            <tr style="font-weight: bold; background-color: #f2f2f2;">
                 @php
                     $prefixCols = 0;
                     if(in_array('slno', $columns)) $prefixCols++;
@@ -210,56 +209,49 @@
             @if($showInvoiceStyle)
             @php
                 // MATH BASED ON INVOICE IMAGE
-                // 'Total' refers to Prorated Base Salary + Arrears
                 $totalEligibleSalary = $totalRemuneration + $totalArrears;
-                
-                // Read admin_charge percentage from URL parameter (default to 7.5% if not provided)
                 $serviceChargePercent = request('admin_charge', 7.5);
                 $serviceCharge = round($totalEligibleSalary * ($serviceChargePercent / 100));
-                
-                // Invoice SubTotal (Sum of everything before GST)
                 $invoiceSubTotal = $totalEligibleSalary + $totalEpfEmployersShare + $totalEdliCharges + $serviceCharge;
-                
                 $cgst = round($invoiceSubTotal * 0.09, 2);
                 $sgst = round($invoiceSubTotal * 0.09, 2);
                 $totalGst = $cgst + $sgst;
                 $finalPayable = $invoiceSubTotal + $totalGst;
-                
-                $colspanLabels = count($columns) - 1; // Span all columns except the last one
+                $colspanLabels = count($columns) - 1;
             @endphp
-            <tr style="font-weight: bold; background-color: #e0e0e0;">
+            <tr style="font-weight: bold;">
                 <td colspan="{{ $colspanLabels }}" class="text-center">Total</td>
                 <td class="text-end">{{ number_format((float)$totalEligibleSalary, 2) }}</td>
             </tr>
-            <tr style="font-weight: bold; background-color: #e0e0e0;">
+            <tr style="font-weight: bold;">
                 <td colspan="{{ $colspanLabels }}" class="text-center">Add: EPF Employer's Share @ 12%</td>
                 <td class="text-end">{{ number_format((float)$totalEpfEmployersShare, 2) }}</td>
             </tr>
-            <tr style="font-weight: bold; background-color: #e0e0e0;">
+            <tr style="font-weight: bold;">
                 <td colspan="{{ $colspanLabels }}" class="text-center">EDLI AND EPF contribution</td>
                 <td class="text-end">{{ number_format((float)$totalEdliCharges, 2) }}</td>
             </tr>
-            <tr style="font-weight: bold; background-color: #e0e0e0;">
+            <tr style="font-weight: bold;">
                 <td colspan="{{ $colspanLabels }}" class="text-center">Add: Service Charges {{ $serviceChargePercent }}% of total eligible salary</td>
                 <td class="text-end">{{ number_format((float)$serviceCharge, 2) }}</td>
             </tr>
-            <tr style="font-weight: bold; background-color: #e0e0e0;">
+            <tr style="font-weight: bold; background-color: #f2f2f2;">
                 <td colspan="{{ $colspanLabels }}" class="text-center">Total</td>
                 <td class="text-end">{{ number_format((float)$invoiceSubTotal, 2) }}</td>
             </tr>
-            <tr style="font-weight: bold; background-color: #e0e0e0;">
+            <tr style="font-weight: bold;">
                 <td colspan="{{ $colspanLabels }}" class="text-center">Add: CGST @ 9%</td>
                 <td class="text-end">{{ number_format((float)$cgst, 2) }}</td>
             </tr>
-            <tr style="font-weight: bold; background-color: #e0e0e0;">
+            <tr style="font-weight: bold;">
                 <td colspan="{{ $colspanLabels }}" class="text-center">Add: SGST @ 9%</td>
                 <td class="text-end">{{ number_format((float)$sgst, 2) }}</td>
             </tr>
-            <tr style="font-weight: bold; background-color: #e0e0e0;">
+            <tr style="font-weight: bold;">
                 <td colspan="{{ $colspanLabels }}" class="text-center">Total GST</td>
                 <td class="text-end">{{ number_format((float)$totalGst, 2) }}</td>
             </tr>
-            <tr style="font-weight: bold; background-color: #e0e0e0;">
+            <tr style="font-weight: bold; background-color: #f2f2f2;">
                 <td colspan="{{ $colspanLabels }}" class="text-center">Total payable</td>
                 <td class="text-end">{{ number_format((float)$finalPayable, 2) }}</td>
             </tr>
@@ -271,15 +263,13 @@
     <div class="summary-block">
         @php
             $remunerationPayable = $totalPayable;
-            $employerContribution = $totalEmployerContribution ?? 0;
-            $subTotalBeforeServiceCharge = $remunerationPayable + $employerContribution;
-            
-            // Read admin_charge percentage from URL parameter (default to 7.5% if not provided)
+            $employerContributionValue = $totalEmployerContribution ?? 0;
+            $subTotalBeforeServiceCharge = $remunerationPayable + $employerContributionValue;
             $adminChargePercent = request('admin_charge', 7.5);
-            $serviceCharge = round($subTotalBeforeServiceCharge * ($adminChargePercent / 100)); // Service/Administrative Charge
-            $subTotal = $subTotalBeforeServiceCharge + $serviceCharge;
-            $gst = round($subTotal * 0.18); // 18% on SubTotal
-            $invoiceTotal = $subTotal + $gst;
+            $serviceChargeValue = round($subTotalBeforeServiceCharge * ($adminChargePercent / 100));
+            $subTotalValue = $subTotalBeforeServiceCharge + $serviceChargeValue;
+            $gstValue = round($subTotalValue * 0.18);
+            $invoiceTotal = $subTotalValue + $gstValue;
         @endphp
 
         <div class="summary-row">
@@ -287,24 +277,24 @@
             <span class="summary-value">{{ number_format((float)$remunerationPayable, 2) }}</span>
         </div>
         
-        @if($employerContribution > 0)
+        @if($employerContributionValue > 0)
         <div class="summary-row">
             <span class="summary-label">Employer Contribution</span>
-            <span class="summary-value">{{ number_format((float)$employerContribution, 2) }}</span>
+            <span class="summary-value">{{ number_format((float)$employerContributionValue, 2) }}</span>
         </div>
         @endif
         
         <div class="summary-row">
             <span class="summary-label">Administrative Charge ({{ $adminChargePercent }}%)</span>
-            <span class="summary-value">{{ number_format((float)$serviceCharge, 2) }}</span>
+            <span class="summary-value">{{ number_format((float)$serviceChargeValue, 2) }}</span>
         </div>
-        <div class="summary-row" style="border-top: 1px solid #000;">
+        <div class="summary-row" style="border-top: 1px solid #000; padding-top: 5px;">
             <span class="summary-label">Total</span>
-            <span class="summary-value">{{ number_format((float)$subTotal, 2) }}</span>
+            <span class="summary-value">{{ number_format((float)$subTotalValue, 2) }}</span>
         </div>
         <div class="summary-row">
             <span class="summary-label">GST</span>
-            <span class="summary-value" style="border-bottom: 1px solid #000;">{{ number_format((float)$gst, 2) }}</span>
+            <span class="summary-value" style="border-bottom: 1px solid #000;">{{ number_format((float)$gstValue, 2) }}</span>
         </div>
         <div class="summary-row">
             <span class="summary-label">Invoice Total</span>
@@ -314,10 +304,11 @@
     @endif
 
     @if(!empty($note))
-    <div style="margin-top: 30px; font-size: 14px; white-space: pre-wrap;">
-        <strong style="display: block; margin-bottom: 5px; font-size: 16px;">Note:</strong>
+    <div style="margin-top: 20px; font-size: 11px; white-space: pre-wrap;">
+        <strong style="display: block; margin-bottom: 5px; font-size: 13px;">Note:</strong>
         {{ $note }}
     </div>
     @endif
 </div>
-@endsection
+</body>
+</html>

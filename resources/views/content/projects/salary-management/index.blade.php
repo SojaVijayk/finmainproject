@@ -21,7 +21,10 @@
             <label class="form-label" for="month">Select Month</label>
             <select id="month" name="month" class="form-select" required>
               @foreach($months as $month)
-                <option value="{{ $month }}" {{ $month == date('F') ? 'selected' : '' }}>{{ $month }}</option>
+                @php 
+                  $selectedMonth = session('payroll_month', date('F'));
+                @endphp
+                <option value="{{ $month }}" {{ $month == $selectedMonth ? 'selected' : '' }}>{{ $month }}</option>
               @endforeach
             </select>
           </div>
@@ -29,7 +32,10 @@
             <label class="form-label" for="year">Select Year</label>
             <select id="year" name="year" class="form-select" required>
               @foreach($years as $year)
-                <option value="{{ $year }}">{{ $year }}</option>
+                @php
+                  $selectedYear = session('payroll_year', date('Y'));
+                @endphp
+                <option value="{{ $year }}" {{ $year == $selectedYear ? 'selected' : '' }}>{{ $year }}</option>
               @endforeach
             </select>
           </div>
@@ -38,17 +44,18 @@
             <select id="employment_type" name="employment_type" class="form-select" required>
               <option value="">Select Type</option>
               @foreach($employmentTypes as $type)
-                <option value="{{ $type }}">{{ ucfirst($type) }}</option>
+                <option value="{{ $type->id }}" {{ (old('employment_type') == $type->id || session('payroll_employment_type_id') == $type->id) ? 'selected' : '' }}>{{ $type->employment_type }}</option>
               @endforeach
             </select>
           </div>
           <div class="mb-3">
             <label class="form-label" for="default_salary_id">Salary ID / Batch Reference (Required)</label>
-            <input type="text" id="default_salary_id" name="default_salary_id" class="form-control" placeholder="e.g. SAL-FEB-2024" required>
+            <input type="text" id="default_salary_id" name="default_salary_id" class="form-control" placeholder="e.g. SAL-FEB-2024" value="{{ session('payroll_default_salary_id') }}" required>
             <div class="form-text">This value will be pre-filled for all employees.</div>
           </div>
-          <div class="text-center">
-            <button type="submit" class="btn btn-primary d-grid w-100">Confirm & Continue</button>
+          <div class="d-flex justify-content-between gap-3">
+            <a href="{{ route('pms.employees.project-index', ['id' => $project_id]) }}" class="btn btn-label-secondary w-100">Back</a>
+            <button type="submit" class="btn btn-primary w-100">Confirm & Continue</button>
           </div>
         </form>
       </div>

@@ -166,7 +166,20 @@ class ProjectEmployeeController extends Controller
     $payTypes = \App\Models\PayType::where('status', 1)->get();
     $masterDeductions = \App\Models\MasterDynamicDeduction::where('status', 1)->get();
 
-    return view('content.projects.employee-details-v2', compact('employee', 'pageConfigs', 'designations', 'user_types', 'employmentTypes', 'payTypes', 'masterDeductions'));
+    $serviceRoles = [
+        'coordinator',
+        'it',
+        'finance',
+        'accounts',
+        'deputation offier',
+        'jd',
+        'Project Investigator',
+        'Team Leader',
+        'HR manager',
+        'Professor'
+    ];
+
+    return view('content.projects.employee-details-v2', compact('employee', 'pageConfigs', 'designations', 'user_types', 'employmentTypes', 'payTypes', 'masterDeductions', 'serviceRoles'));
   }
 
     public function updateMaster(Request $request, $id)

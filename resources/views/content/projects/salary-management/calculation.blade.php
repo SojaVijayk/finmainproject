@@ -19,7 +19,7 @@
       @csrf
       <input type="hidden" name="month" value="{{ $month }}">
       <input type="hidden" name="year" value="{{ $year }}">
-      <input type="hidden" name="employment_type" value="{{ $employmentType }}">
+      <input type="hidden" name="employment_type" value="{{ $employmentTypeId }}">
       <input type="hidden" name="freeze" id="freeze-input" value="0">
 
       <div class="table-responsive text-nowrap mb-4">
@@ -60,7 +60,7 @@
               </td>
               <td>{{ $employee->designation ?? $employee->role ?? 'N/A' }}</td>
               <td>
-                <input type="text" name="salary_id[]" class="form-control form-control-sm" placeholder="e.g. SAL-001" value="{{ $defaultSalaryId ?? '' }}" {{ $isFrozen ? 'readonly' : '' }}>
+                <input type="text" name="salary_id[]" class="form-control form-control-sm" placeholder="e.g. SAL-001" value="{{ $employee->salary_id ?? $defaultSalaryId ?? '' }}" {{ $isFrozen ? 'readonly' : '' }}>
               </td>
               <td>
                 <input type="number" class="form-control form-control-sm text-center month-days-val" value="{{ $actualDaysInMonth }}" readonly disabled>
@@ -70,7 +70,7 @@
                 <input type="number" name="monthly_working_days[]" class="form-control form-control-sm text-center working-days" value="{{ $employee->total_working_days ?? $totalDays }}" min="1" max="40" required {{ $isFrozen ? 'readonly tabindex=-1' : '' }}>
               </td>
               <td>
-                <input type="number" name="days_worked[]" class="form-control form-control-sm text-center days-worked" value="{{ $employee->days_worked ?? ($actualDaysInMonth - $employee->lop_days) }}" min="0" max="{{ $actualDaysInMonth }}" step="0.5" required {{ $isFrozen ? 'readonly tabindex=-1' : '' }}>
+                <input type="number" name="days_worked[]" class="form-control form-control-sm text-center days-worked" value="{{ $employee->days_worked }}" min="0" max="{{ $actualDaysInMonth }}" step="0.5" required data-manual="{{ isset($employee->days_worked) ? 'true' : 'false' }}" {{ $isFrozen ? 'readonly tabindex=-1' : '' }}>
               </td>
               <td>
                 <input type="number" name="cl_days[]" class="form-control form-control-sm text-center cl-days" value="{{ $employee->cl_days }}" min="0" step="0.5" style="min-width: 80px;" {{ $isFrozen ? 'readonly tabindex=-1' : '' }}>
@@ -121,7 +121,7 @@
       </div>
 
       <div class="d-flex justify-content-between align-items-center">
-        <a href="{{ route('pms.salary-management.select-employees', ['project_id' => $project_id, 'month' => $month, 'year' => $year, 'employment_type' => $employmentType]) }}" class="btn btn-label-secondary">Back</a>
+        <a href="{{ route('pms.salary-management.select-employees', ['project_id' => $project_id]) }}" onclick="window.location.href=this.href; return false;" class="btn btn-label-secondary">Back</a>
         <div class="d-flex gap-2">
 
           <button type="button" class="btn btn-success" onclick="submitForm('{{ route('pms.salary-management.summary', $project_id) }}', '0')">
@@ -180,16 +180,22 @@ $(function() {
                 daysWorkedInput.data('manual', true);
             }
 
-            var physicalDays = parseFloat(daysWorkedInput.val()) || 0;
-
+            var daysWorkedValue = daysWorkedInput.val();
             // Only auto-calculate if:
             // 1. Not Manual
             // 2. The trigger is NOT the working-days input (changing denominator shouldn't change numerator)
+            // 3. The value is NOT already set (unless we explicitly want to recalculate)
             var isWorkingDaysTrigger = triggerSource && $(triggerSource).hasClass('working-days');
             
-            if (!isManual && !isWorkingDaysTrigger) {
+            if (!isManual && !isWorkingDaysTrigger && (daysWorkedValue === "" || daysWorkedValue == 0 || !triggerSource)) {
                 physicalDays = Math.max(0, workingDays - lop - cl - sl - pl - other);
                 daysWorkedInput.val(physicalDays.toFixed(1));
+            } else if (triggerSource && $(triggerSource).is(daysWorkedInput)) {
+                // If the user manually edited, keep it
+                physicalDays = parseFloat(daysWorkedValue) || 0;
+            } else {
+                // Use existing value
+                physicalDays = parseFloat(daysWorkedValue) || 0;
             }
 
              // 4. Calculate Payable Days (Physical + Paid Leaves)

@@ -6,19 +6,21 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Service;
 use App\Models\ProjectEmployee;
+use App\Models\EmploymentType;
 use Illuminate\Support\Facades\DB;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class SalaryManagementController extends Controller
 {
-    public function index($project_id = null)
+    public function index(Request $request, $project_id = null)
     {
         $pageConfigs = ['myLayout' => 'horizontal'];
-        
-        $employmentTypes = [
-            'Apprentice', 'Daily Wages', 'Interns', 'Contract', 
-            'Full Time', 'Part Time', 'Freelance', 'Temporary', 'Permanent', 'Deputation'
-        ];
-            
+         $employmentTypes = \App\Models\EmploymentType::where('status', 1)->get();
+        // REMOVED: Do not clear pending data here to allow cross-module persistence
+        // if (!$request->has('month')) {
+        //     session()->forget('payroll_pending_data');
+        // }
+
         $years = range(date('Y'), date('Y') - 5);
         $months = [
             'January', 'February', 'March', 'April', 'May', 'June',
@@ -31,14 +33,37 @@ class SalaryManagementController extends Controller
     public function selectEmployees(Request $request, $project_id = null)
     {
         $pageConfigs = ['myLayout' => 'horizontal'];
-        $month = $request->month;
-        $year = $request->year;
-        $employmentType = $request->employment_type;
-        $defaultSalaryId = $request->default_salary_id;
+        $month = $request->month ?? session('payroll_month');
+        $year = $request->year ?? session('payroll_year');
+        $employmentTypeId = $request->employment_type ?? session('payroll_employment_type_id');
+        $defaultSalaryId = $request->default_salary_id ?? session('payroll_default_salary_id');
+        $project_id = $project_id ?? $request->project_id ?? session('payroll_project_id') ?? 1;
+
+        // If context changed, clear pending data
+        if ($month != session('payroll_month') || $year != session('payroll_year') || $employmentTypeId != session('payroll_employment_type_id')) {
+            session()->forget('payroll_pending_data');
+        }
+
+        // Resolve Employment Type Name if it's an ID
+        $employmentType = $employmentTypeId;
+        if (is_numeric($employmentTypeId)) {
+            $et = \App\Models\EmploymentType::find($employmentTypeId);
+            $employmentType = $et ? $et->employment_type : $employmentTypeId;
+        }
 
         if (empty($month) || empty($year) || empty($employmentType)) {
             return redirect()->route('pms.salary-management.index', $project_id)->with('error', 'Payroll details are missing. Please enter them again.');
         }
+
+        // Store context in session
+        session([
+            'payroll_month' => $month,
+            'payroll_year' => $year,
+            'payroll_employment_type' => $employmentType,
+            'payroll_employment_type_id' => $employmentTypeId,
+            'payroll_project_id' => $project_id,
+            'payroll_default_salary_id' => $defaultSalaryId
+        ]);
 
         // Calculate Month Start and End
         $mStart = \Carbon\Carbon::parse("1 $month $year")->startOfMonth();
@@ -51,7 +76,7 @@ class SalaryManagementController extends Controller
             ->where('start_date', '<=', $monthEndStr)
             ->where(function($q) use ($monthStartStr) {
                 $q->where('end_date', '>=', $monthStartStr)
-                  ->orWhereNull('end_date');
+                    ->orWhereNull('end_date');
             })
             ->get();
 
@@ -109,25 +134,59 @@ class SalaryManagementController extends Controller
             ->get()
             ->keyBy('p_id');
 
+        $pendingData = session('payroll_pending_data', []);
+        $selectedIdsFromSession = $pendingData['selected_employees'] ?? $pendingData['p_id'] ?? [];
+
         foreach ($employees as $employee) {
             $employee->is_frozen = $payrolls->has($employee->p_id) ? $payrolls->get($employee->p_id)->is_frozen : 0;
+            // Pre-check if it was previously selected in this session (either as selected_employees or p_id)
+            $employee->is_selected = in_array($employee->p_id, $selectedIdsFromSession);
         }
 
-        return view('content.projects.salary-management.select-employees', compact('employees', 'month', 'year', 'employmentType', 'pageConfigs', 'project_id', 'defaultSalaryId'));
+        return view('content.projects.salary-management.select-employees', compact('employees', 'month', 'year', 'employmentType', 'employmentTypeId', 'pageConfigs', 'project_id', 'defaultSalaryId'));
     }
 
     public function calculation(Request $request, $project_id = null)
     {
         set_time_limit(300); // Increase execution time to 5 minutes
         $pageConfigs = ['myLayout' => 'horizontal'];
-        $month = $request->month;
-        $year = $request->year;
-        $employmentType = $request->employment_type;
-        $defaultSalaryId = $request->default_salary_id;
-        $selectedIds = $request->selected_employees ?? [];
+        $month = $request->month ?? session('payroll_month');
+        $year = $request->year ?? session('payroll_year');
+        $employmentTypeId = $request->employment_type ?? session('payroll_employment_type_id');
+        $defaultSalaryId = $request->default_salary_id ?? session('payroll_default_salary_id');
+        $project_id = $project_id ?? $request->project_id ?? session('payroll_project_id');
+        
+        $pendingData = session('payroll_pending_data', []);
+        $selectedIds = $request->selected_employees ?? $request->p_id ?? $pendingData['p_id'] ?? $pendingData['selected_employees'] ?? [];
+
+        // Resolve Employment Type Name if it's an ID
+        $employmentType = $employmentTypeId;
+        if (is_numeric($employmentTypeId)) {
+            $et = \App\Models\EmploymentType::find($employmentTypeId);
+            $employmentType = $et ? $et->employment_type : $employmentTypeId;
+        }
 
         if (empty($month) || empty($year) || empty($employmentType)) {
             return redirect()->route('pms.salary-management.index', $project_id)->with('error', 'Payroll details (Month, Year, Type) are missing. Please start over.');
+        }
+
+        // Store context in session
+        session([
+            'payroll_month' => $month,
+            'payroll_year' => $year,
+            'payroll_employment_type' => $employmentType,
+            'payroll_employment_type_id' => $employmentTypeId,
+            'payroll_project_id' => $project_id,
+            'payroll_default_salary_id' => $defaultSalaryId
+        ]);
+
+        // Selection Persistence: Sync selections to session immediately if POSTed from Step 2
+        if ($request->isMethod('post')) {
+            $currentPending = session('payroll_pending_data', []);
+            // Merge instead of overwrite to keep existing days_worked, arrears, etc.
+            $currentPending['selected_employees'] = $selectedIds; 
+            $currentPending['p_id'] = $selectedIds; 
+            session(['payroll_pending_data' => $currentPending]);
         }
 
         // Standardize divisor to 31 for the user's specific proration model (Feb = Jan * 28/31)
@@ -136,7 +195,30 @@ class SalaryManagementController extends Controller
         $totalDays = $actualDaysInMonth; // Default to actual days for 100% pay on full month
 
         if (empty($selectedIds)) {
-            return redirect()->back()->with('error', 'Please select at least one employee.');
+            // Reconstruct selectedIds for GET requests (Back button)
+            $selectedIds = \DB::table('employee_payroll')
+                ->join('project_employee', 'project_employee.p_id', '=', 'employee_payroll.p_id')
+                ->join('service', 'service.p_id', '=', 'employee_payroll.p_id')
+                ->where('employee_payroll.paymonth', $month)
+                ->where('employee_payroll.year', $year)
+                ->where('project_employee.project_id', $project_id)
+                ->where('service.employment_type', $employmentType)
+                ->pluck('employee_payroll.p_id')
+                ->toArray();
+                
+            // If still empty, it means no payroll processed yet, so fallback to all active employees
+            if (empty($selectedIds)) {
+                $selectedIds = \App\Models\Service::where('employment_type', $employmentType)
+                    ->join('project_employee', 'project_employee.p_id', '=', 'service.p_id')
+                    ->where('project_employee.project_id', $project_id)
+                    ->where('service.status', 1)
+                    ->pluck('service.p_id')
+                    ->toArray();
+            }
+        }
+
+        if (empty($selectedIds)) {
+            return redirect()->route('pms.salary-management.select-employees', $project_id)->with('error', 'Please select at least one employee.');
         }
 
         $mStart = \Carbon\Carbon::parse("$month $year")->startOfMonth();
@@ -234,8 +316,48 @@ class SalaryManagementController extends Controller
             ->get()
             ->keyBy('p_id');
 
+        $pendingPIds = isset($pendingData['p_id']) ? array_map('strval', (array)$pendingData['p_id']) : (isset($pendingData['selected_employees']) ? array_map('strval', (array)$pendingData['selected_employees']) : []);
+
         foreach ($employees as $employee) {
-            if ($payrolls->has($employee->p_id)) {
+            // Default initialization
+            $employee->is_frozen = 0;
+            $employee->salary_id = $defaultSalaryId;
+            $employee->total_working_days = $totalDays;
+            $employee->days_worked = $actualDaysInMonth;
+            $employee->cl_days = 0;
+            $employee->sl_days = 0;
+            $employee->pl_days = 0;
+            $employee->lop_days = 0;
+            $employee->other_leave_days = 0;
+            $employee->gross_salary = $employee->consolidated_pay ?? 0;
+            $employee->net_salary = 0;
+            $employee->pf = 0;
+            $employee->employer_contribution = 0;
+            $employee->epf_employers_share = 0;
+            $employee->edli_charges = 0;
+            $employee->arrear = 0;
+
+            // Check session first for "Back" button persistence
+            $sessionIdx = array_search((string)$employee->p_id, $pendingPIds);
+            
+            if ($sessionIdx !== false) {
+                $employee->is_frozen = 0; // If it's in session pending, it's not frozen yet
+                $employee->salary_id = $pendingData['salary_id'][$sessionIdx] ?? $defaultSalaryId;
+                if (isset($pendingData['monthly_working_days'][$sessionIdx])) $employee->total_working_days = $pendingData['monthly_working_days'][$sessionIdx];
+                if (isset($pendingData['days_worked'][$sessionIdx])) $employee->days_worked = $pendingData['days_worked'][$sessionIdx];
+                if (isset($pendingData['cl_days'][$sessionIdx])) $employee->cl_days = $pendingData['cl_days'][$sessionIdx];
+                if (isset($pendingData['sl_days'][$sessionIdx])) $employee->sl_days = $pendingData['sl_days'][$sessionIdx];
+                if (isset($pendingData['pl_days'][$sessionIdx])) $employee->pl_days = $pendingData['pl_days'][$sessionIdx];
+                if (isset($pendingData['lop_days'][$sessionIdx])) $employee->lop_days = $pendingData['lop_days'][$sessionIdx];
+                if (isset($pendingData['other_leave_days'][$sessionIdx])) $employee->other_leave_days = $pendingData['other_leave_days'][$sessionIdx];
+                if (isset($pendingData['base_salary'][$sessionIdx])) $employee->gross_salary = $pendingData['base_salary'][$sessionIdx];
+                if (isset($pendingData['total_salary'][$sessionIdx])) $employee->net_salary = $pendingData['total_salary'][$sessionIdx];
+                if (isset($pendingData['pf'][$sessionIdx])) $employee->pf = $pendingData['pf'][$sessionIdx];
+                if (isset($pendingData['employer_contribution'][$sessionIdx])) $employee->employer_contribution = $pendingData['employer_contribution'][$sessionIdx];
+                if (isset($pendingData['epf_employers_share'][$sessionIdx])) $employee->epf_employers_share = $pendingData['epf_employers_share'][$sessionIdx];
+                if (isset($pendingData['edli_charges'][$sessionIdx])) $employee->edli_charges = $pendingData['edli_charges'][$sessionIdx];
+                if (isset($pendingData['arrear'][$sessionIdx])) $employee->arrear = $pendingData['arrear'][$sessionIdx];
+            } elseif ($payrolls->has($employee->p_id)) {
                 $payroll = $payrolls->get($employee->p_id);
                 $employee->is_frozen = $payroll->is_frozen;
                 $employee->salary_id = $payroll->salary_id;
@@ -258,20 +380,50 @@ class SalaryManagementController extends Controller
             }
         }
 
-        return view('content.projects.salary-management.calculation', compact('employees', 'month', 'year', 'employmentType', 'pageConfigs', 'project_id', 'defaultSalaryId', 'totalDays', 'actualDaysInMonth'));
+        return view('content.projects.salary-management.calculation', compact('employees', 'month', 'year', 'employmentType', 'employmentTypeId', 'pageConfigs', 'project_id', 'defaultSalaryId', 'totalDays', 'actualDaysInMonth'));
     }
 
     public function summary(Request $request, $project_id = null)
     {
-        if ($request->isMethod('get')) {
-            return redirect()->route('pms.salary-management.index', $project_id);
+        $pageConfigs = ['myLayout' => 'horizontal'];
+        
+        // Context from request or session
+        $month = $request->month ?? session('payroll_month') ?? date('F');
+        $year = $request->year ?? session('payroll_year') ?? date('Y');
+        $employmentTypeId = $request->employment_type ?? session('payroll_employment_type_id') ?? 1;
+        $project_id = $project_id ?? $request->project_id ?? session('payroll_project_id') ?? 1;
+
+        // Resolve Employment Type Name if it's an ID
+        $employmentType = $employmentTypeId;
+        if (is_numeric($employmentTypeId)) {
+            $et = \App\Models\EmploymentType::find($employmentTypeId);
+            $employmentType = $et ? $et->employment_type : $employmentTypeId;
         }
 
-        $pageConfigs = ['myLayout' => 'horizontal'];
-        $month = $request->month;
-        $year = $request->year;
-        $employmentType = $request->employment_type;
+        if (empty($month) || empty($year) || empty($employmentType)) {
+            return redirect()->route('pms.salary-management.index', $project_id)->with('error', 'Payroll context missing.');
+        }
+
+        // PERSISTENCE: Save POST data to session before proceeding
+        if ($request->isMethod('post')) {
+            session(['payroll_pending_data' => $request->all()]);
+        }
+
         $p_ids = $request->p_id ?? [];
+        
+        // If GET and no p_ids, fetch all for this context from DB
+        if ($request->isMethod('get') && empty($p_ids)) {
+            $p_ids = \DB::table('employee_payroll')
+                ->join('project_employee', 'project_employee.p_id', '=', 'employee_payroll.p_id')
+                ->join('service', 'service.p_id', '=', 'employee_payroll.p_id')
+                ->where('employee_payroll.paymonth', $month)
+                ->where('employee_payroll.year', $year)
+                ->where('project_employee.project_id', $project_id)
+                ->where('service.employment_type', $employmentType)
+                ->where('service.status', 1)
+                ->pluck('employee_payroll.p_id')
+                ->toArray();
+        }
         $workingDays = $request->monthly_working_days ?? [];
         $daysWorked = $request->days_worked ?? [];
         $clDays = $request->cl_days ?? [];
@@ -302,6 +454,8 @@ class SalaryManagementController extends Controller
             ->select('p_id', 'is_frozen')
             ->get()
             ->keyBy('p_id');
+
+        $hasProcessedRecords = $payrolls->count() > 0;
 
         $summaryData = [];
         foreach ($p_ids as $index => $p_id) {
@@ -345,6 +499,35 @@ class SalaryManagementController extends Controller
             // The user explicitly requested that Employee Contribution NOT be deducted from the Total Salary anywhere.
             $finalTotal = (float)($totalSalaries[$index] ?? 0);
 
+            // If GET, fetch existing values from payroll record
+            if ($request->isMethod('get')) {
+                $pRec = \DB::table('employee_payroll')
+                    ->where('p_id', $p_id)
+                    ->where('paymonth', $month)
+                    ->where('year', $year)
+                    ->first();
+                
+                if ($pRec) {
+                    $workingDayCount = $pRec->total_working_days;
+                    $daysWorkedCount = $pRec->days_worked;
+                    $cl = $pRec->cl_days;
+                    $sl = $pRec->sl_days;
+                    $pl = $pRec->pl_days;
+                    $lop = $pRec->lop_days;
+                    $other = $pRec->other_leave_days;
+                    $arrear = $pRec->other_allowance;
+                    $employer_contribution = $pRec->employer_contribution;
+                    $epfEmployersShareValue = $pRec->epf_employers_share;
+                    $edliChargesValue = $pRec->edli_charges;
+                    $pfValue = $pRec->pf;
+                    $finalTotal = $pRec->net_salary;
+                }
+            } else {
+                $epfEmployersShareValue = (float)($epfEmployersShare[$index] ?? 0);
+                $edliChargesValue = (float)($edliCharges[$index] ?? 0);
+                $pfValue = (float)($pfs[$index] ?? 0);
+            }
+
             $summaryData[] = [
                 'p_id' => $p_id,
                 'name' => $employee->name ?? 'N/A',
@@ -361,9 +544,9 @@ class SalaryManagementController extends Controller
                 'arrear' => $arrear,
                 'employee_contribution' => $employee_contribution,
                 'employer_contribution' => $employer_contribution,
-                'epf_employers_share' => (float)($epfEmployersShare[$index] ?? 0),
-                'edli_charges' => (float)($edliCharges[$index] ?? 0),
-                'pf' => (float)($pfs[$index] ?? 0),
+                'epf_employers_share' => $epfEmployersShareValue,
+                'edli_charges' => $edliChargesValue,
+                'pf' => $pfValue,
                 'base_salary' => $baseSalary,
                 'total_salary' => $finalTotal,
                 'is_frozen' => $payrolls->has($p_id) ? $payrolls->get($p_id)->is_frozen : 0,
@@ -373,7 +556,7 @@ class SalaryManagementController extends Controller
             ];
         }
 
-        return view('content.projects.salary-management.summary', compact('summaryData', 'month', 'year', 'employmentType', 'pageConfigs', 'project_id', 'actualDaysInMonth'));
+        return view('content.projects.salary-management.summary', compact('summaryData', 'month', 'year', 'employmentType', 'employmentTypeId', 'pageConfigs', 'project_id', 'actualDaysInMonth', 'hasProcessedRecords'));
     }
 
     public function store(Request $request, $project_id = null)
@@ -395,12 +578,22 @@ class SalaryManagementController extends Controller
         $employerContributions = $request->employer_contribution ?? [];
         $totalSalaries = $request->total_salary ?? [];
         $isFrozen = $request->has('freeze') && $request->freeze == '1' ? 1 : 0;
+        
+        // Subset Processing: Only process these specific IDs
+        $processPIds = $request->process_p_ids ?? $employeeIds; 
 
         $monthStart = \Carbon\Carbon::parse("1 $month $year")->startOfMonth();
         $monthEnd = \Carbon\Carbon::parse("1 $month $year")->endOfMonth();
         $monthStartStr = $monthStart->format('Y-m-d');
         $monthEndStr = $monthEnd->format('Y-m-d');
-        $employmentType = $request->employment_type;
+        $employmentTypeId = $request->employment_type;
+
+        // Resolve Employment Type Name if it's an ID
+        $employmentType = $employmentTypeId;
+        if (is_numeric($employmentTypeId)) {
+            $et = \App\Models\EmploymentType::find($employmentTypeId);
+            $employmentType = $et ? $et->employment_type : $employmentTypeId;
+        }
 
         DB::beginTransaction();
         try {
@@ -423,6 +616,11 @@ class SalaryManagementController extends Controller
                 ->keyBy('p_id');
 
             foreach ($employeeIds as $index => $p_id) {
+                // Only save/update if this ID is in the "process" list
+                if (!in_array($p_id, $processPIds)) {
+                    continue;
+                }
+
                 // HARD LOCK: Skip processing if already frozen
                 if ($existingPayrolls->has($p_id) && $existingPayrolls->get($p_id)->is_frozen == 1) {
                     continue; 
@@ -509,6 +707,14 @@ class SalaryManagementController extends Controller
             }
             DB::commit();
             
+            if ($isFrozen) {
+                // Clear pending data ONLY on successful freeze
+                session()->forget('payroll_pending_data');
+            } else {
+                // If just processed, sync the request data back to session to ensure persistence
+                session(['payroll_pending_data' => $request->all()]);
+            }
+            
             $redirect = route('pms.salary-management.index', $project_id);
             $msg = $isFrozen ? 'Payroll frozen successfully ' : 'Payroll processed successfully ';
             
@@ -529,12 +735,19 @@ class SalaryManagementController extends Controller
             return redirect()->back()->with('error', 'Error processing payroll: ' . $e->getMessage());
         }
     }
-    public function statement(Request $request)
+    public function statement(Request $request, $project_id = null)
     {
-        $project_id = $request->project_id;
-        $month = $request->month;
-        $year = $request->year;
-        $employment_type = $request->employment_type;
+        $project_id = $project_id ?? $request->project_id ?? session('payroll_project_id');
+        $month = $request->month ?? session('payroll_month');
+        $year = $request->year ?? session('payroll_year');
+        $employmentTypeId = $request->employment_type ?? session('payroll_employment_type_id');
+
+        // Resolve Employment Type Name if it's an ID
+        $employmentType = $employmentTypeId;
+        if (is_numeric($employmentTypeId)) {
+            $et = \App\Models\EmploymentType::find($employmentTypeId);
+            $employmentType = $et ? $et->employment_type : $employmentTypeId;
+        }
         $pageConfigs = ['myLayout' => 'blank'];
         $project = \App\Models\Project::find($project_id);
 
@@ -573,7 +786,7 @@ class SalaryManagementController extends Controller
 
             // Check Employment Type & Get Designation (Best Service)
             $service = \App\Models\Service::where('p_id', $payroll->p_id)
-                ->where('employment_type', $employment_type)
+                ->where('employment_type', $employmentType)
                 ->where('start_date', '<=', $mEnd->format('Y-m-d'))
                 ->where(function($q) use ($mStart) {
                     $q->where('end_date', '>=', $mStart->format('Y-m-d'))
@@ -616,6 +829,17 @@ class SalaryManagementController extends Controller
             ];
         }
 
-        return view('content.projects.salary-management.salary-statement', compact('statementData', 'month', 'year', 'pageConfigs', 'project', 'columns', 'startDateStr', 'endDateStr', 'note'));
+        if ($request->query('format') === 'pdf') {
+            $pdf = Pdf::loadView('content.projects.salary-management.salary-statement', compact('statementData', 'month', 'year', 'pageConfigs', 'project', 'columns', 'startDateStr', 'endDateStr', 'note', 'employmentType'))
+                ->setPaper('a4', 'landscape')
+                ->setOptions([
+                    'defaultFont' => 'DejaVu Sans',
+                    'isHtml5ParserEnabled' => true,
+                    'isRemoteEnabled' => true
+                ]);
+            return $pdf->stream("Salary_Statement_{$month}_{$year}.pdf");
+        }
+
+        return view('content.projects.salary-management.salary-statement', compact('statementData', 'month', 'year', 'pageConfigs', 'project', 'columns', 'startDateStr', 'endDateStr', 'note', 'employmentType', 'employmentTypeId'));
     }
 }

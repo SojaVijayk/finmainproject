@@ -1,34 +1,36 @@
 @php
+    // Earnings mapping based on Reference Image and employee_payroll table
     $basicPay = $payroll->basic_pay > 0 ? $payroll->basic_pay : ($payroll->service_basic ?? 0);
     $da = $payroll->da > 0 ? $payroll->da : ($payroll->service_da ?? 0);
     $hra = $payroll->hra > 0 ? $payroll->hra : ($payroll->service_hra ?? 0);
-    $arrear = $payroll->other_allowance;
+    // Controller maps 'Arrear' to 'other_allowance'
+    $arrear = $payroll->other_allowance ?? 0;
     
-    // Identified Fixed and Other Allowances in Reference Image
-    $fixedAllowance = 0; // If available in schema later, map here.
-    $otherAllowance = 0; // If available in schema later, map here.
+    // Fixed Allowance sum
+    $fixedAllowance = ($payroll->conveyance_allowance ?? 0) + ($payroll->medical_allowance ?? 0) + ($payroll->special_allowance ?? 0);
+    
+    // Other Allowance sum
+    $otherAllowance = ($payroll->festival_allowance ?? 0) + ($payroll->bonus ?? 0) + ($payroll->overtime_pay ?? 0) + ($payroll->attendance_bonus ?? 0);
     
     $totalEarnings = $basicPay + $da + $hra + $arrear + $fixedAllowance + $otherAllowance;
     
-    // Deductions from Refernce Image
+    // Deductions mapping
     $tds = $payroll->tds + $payroll->tds_192_b + $payroll->tds_194_j;
     $profTax = $payroll->professional_tax;
-    $lop = 0; // Hidden or already deducted
-    $medisep = $dynamicDeductions['MEDISEP'] ?? 0;
-    $gpf = $payroll->gpf;
+    $lop = (float)($payroll->lop_days ?? 0); // Display as '-' in table if 0
+    
+    $medisep = $payroll->medisep ?? ($dynamicDeductions['MEDISEP'] ?? $dynamicDeductions['Medisep'] ?? 0);
+    $gpf = $payroll->gpf ?? ($payroll->pf ?? 0); 
     $lic = $payroll->lic + $payroll->lic_others;
-    $sli1 = $dynamicDeductions['SLI 1'] ?? 0;
-    $sli2 = $dynamicDeductions['SLI 2'] ?? 0;
-    $sli3 = $dynamicDeductions['SLI 3'] ?? 0;
-    $gis = $dynamicDeductions['GIS'] ?? 0;
-    $gpais = $dynamicDeductions['GPAIS'] ?? 0;
-    $others = $payroll->others;
+    $sli1 = $payroll->sli1 ?? ($dynamicDeductions['SLI 1'] ?? 0);
+    $sli2 = $payroll->sli2 ?? ($dynamicDeductions['SLI 2'] ?? 0);
+    $sli3 = $payroll->sli3 ?? ($dynamicDeductions['SLI 3'] ?? 0);
+    $gis = $payroll->gis ?? ($dynamicDeductions['GIS'] ?? $dynamicDeductions['Gis'] ?? 0);
+    $gpais = $payroll->gpais ?? ($dynamicDeductions['GPAIS'] ?? 0);
+    $others = $payroll->others ?? 0;
 
-    // Check for other common names if exact keys don't exist
-    if($medisep == 0) $medisep = $dynamicDeductions['Medisep'] ?? 0;
-    if($gis == 0) $gis = $dynamicDeductions['Gis'] ?? 0;
-
-    $totalDeductions = $tds + $profTax + $lop + $medisep + $gpf + $lic + $sli1 + $sli2 + $sli3 + $gis + $gpais + $others;
+    $totalDeductions = $tds + $profTax + $medisep + $gpf + $lic + $sli1 + $sli2 + $sli3 + $gis + $gpais + $others;
+    // Note: LOP amount is usually already subtracted from Gross or handled, so we match image's totals logic.
     $netSalary = $totalEarnings - $totalDeductions;
 @endphp
 
@@ -37,91 +39,119 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Deputation Salary Slip - {{ $payroll->name }}</title>
+    <title>Salary Slip - {{ $payroll->name }}</title>
     <style>
-        body { font-family: Arial, sans-serif; color: #333; margin: 0; padding: 20px; background-color: #fff; line-height: 1.4; }
-        .slip-container { width: 100%; max-width: 850px; margin: 0 auto; border: 1px solid #eee; padding: 30px; position: relative; }
-        .header-table { width: 100%; border-bottom: 2px solid #eee; margin-bottom: 25px; }
+        @page { margin: 10mm; }
+        body { font-family: 'Times New Roman', serif; color: #000; margin: 0; padding: 0; background-color: #fff; line-height: 1.4; font-size: 14px; }
+        .slip-container { width: 100%; max-width: 800px; margin: 0 auto; padding: 20px; position: relative; }
+        
+        /* Header Styling matching image */
+        .header-section { text-align: center; margin-bottom: 30px; position: relative; }
+        .logo-container { position: absolute; left: 10px; top: 0; }
         .logo { width: 85px; }
-        .header-text { text-align: center; }
-        .header-text h1 { margin: 0; font-size: 22px; color: #004a99; text-transform: uppercase; }
-        .header-text p { margin: 4px 0; font-size: 13px; color: #666; }
-        .header-text .subtitle { color: #e31e24; font-weight: bold; }
+        .header-content { padding-top: 0; }
+        .header-content h1 { margin: 0; font-size: 26px; color: #003366; font-weight: bold; }
+        .header-content .subtitle { margin: 2px 0; font-size: 13px; color: #cc0000; font-weight: bold; }
+        .header-content .address { margin: 0; font-size: 13px; font-weight: bold; }
         
-        .details-table { width: 100%; margin-bottom: 25px; }
-        .details-table td { padding: 6px; font-size: 14px; border: none; vertical-align: top; }
-        .label { font-weight: bold; width: 180px; }
+        /* Employee Details Styling */
+        .details-table { width: 100%; margin-bottom: 25px; border-collapse: collapse; margin-top: 50px; }
+        .details-table td { padding: 5px 0; border: none; vertical-align: top; font-size: 15px; }
+        .label-cell { width: 160px; font-weight: normal; }
+        .value-cell { padding-left: 20px; font-weight: normal; }
         
-        .month-banner { background-color: #e9ecef; text-align: center; padding: 10px; font-weight: bold; font-size: 16px; margin-bottom: 20px; border-radius: 2px; }
+        /* Month Banner */
+        .month-banner { background-color: #eeeeee; text-align: center; padding: 8px; font-weight: bold; font-size: 16px; margin-bottom: 20px; border-top: 1px solid #ddd; border-bottom: 1px solid #ddd; }
         
-        .main-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-        .main-table th, .main-table td { border: 1px solid #ccc; padding: 12px 10px; font-size: 14px; }
-        .main-table th { background-color: #f8f9fa; text-decoration: underline; text-align: center; }
+        /* Main Earnings/Deductions Table */
+        .main-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; border: 1px solid #ccc; }
+        .main-table th { border: 1px solid #ccc; padding: 8px; font-weight: bold; text-align: center; font-size: 15px; text-decoration: underline; }
+        .main-table td { border: 1px solid #ccc; padding: 6px 15px; font-size: 14px; }
         .text-right { text-align: right; }
         .text-center { text-align: center; }
         
-        .net-salary-block { text-align: right; margin-top: 20px; }
-        .net-salary-box { display: inline-block; border-top: 2px solid #333; border-bottom: 4px double #333; padding: 10px 20px; font-weight: bold; font-size: 19px; }
+        /* Net Salary Section */
+        .net-section { text-align: right; margin-top: 10px; }
+        .net-table { float: right; border-collapse: collapse; min-width: 250px; }
+        .net-table td { padding: 5px 10px; border: none; font-weight: bold; font-size: 16px; text-align: right; }
+        .net-label { width: 120px; padding-right: 20px; }
+        .net-value { width: 130px; border-top: 1px solid #000; border-bottom: 4px double #000; padding: 6px 0; }
         
-        .in-words { font-weight: bold; margin-top: 20px; text-align: center; font-size: 15px; font-style: italic; }
-        .footer-info { margin-top: 40px; font-size: 13px; color: #444; }
+        /* Footer Sections */
+        .in-words { font-weight: bold; margin-top: 30px; clear: both; text-align: left; padding-left: 10px; font-size: 14px; }
+        .issued-to { margin-top: 80px; text-align: left; font-size: 14px; padding-left: 10px; }
         
-        .print-btn, .back-btn { position: fixed; bottom: 20px; background: #004a99; color: #fff; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; text-decoration: none; font-size: 14px; z-index: 1000; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .print-btn { right: 20px; }
-        .back-btn { right: 170px; background: #6c757d; }
+        .footer-meta { width: 100%; margin-top: 100px; border-collapse: collapse; }
+        .footer-meta td { border: none; font-size: 14px; font-weight: bold; }
+        
+        /* Control Buttons (Screen only) */
+        .controls { position: fixed; top: 20px; right: 20px; z-index: 1000; }
+        .btn { padding: 10px 20px; border-radius: 4px; border: none; color: #fff; cursor: pointer; text-decoration: none; font-size: 14px; margin-left: 10px; display: inline-block; }
+        .btn-print { background-color: #003366; }
+        .btn-back { background-color: #666; }
         
         @media print {
-            .print-btn, .back-btn { display: none; }
-            body { padding: 0; }
-            .slip-container { border: none; padding: 10px; }
+            .controls { display: none; }
+            body { background-color: #fff; padding: 0; }
+            .slip-container { border: none; padding: 0; }
         }
     </style>
 </head>
 <body>
 
+@if(!isset($isExport))
+    <div class="controls">
+        <a href="{{ route('pms.deduction-master.select-employees', $payroll->project_id) }}" class="btn btn-back">← Back</a>
+        <button onclick="window.print()" class="btn btn-print">Print Slip</button>
+    </div>
+@endif
+
 <div class="slip-container">
-    <table class="header-table">
-        <tr>
-            <td style="width: 100px;">
-                <img src="{{ public_path('assets/img/branding/CMD-logo.png') }}" alt="Logo" class="logo">
-            </td>
-            <td class="header-text">
-                <h1>Centre for Management Development</h1>
-                <p class="subtitle">(An Autonomous Institution under the Government of Kerala)</p>
-                <p>CV Raman Pillai Road, Thycaud P.O, Thiruvananthapuram 695014</p>
-            </td>
-        </tr>
-    </table>
+    <div class="header-section">
+        <div class="logo-container">
+            <img src="{{ public_path('assets/img/branding/CMD-logo.png') }}" alt="CMD Logo" class="logo">
+        </div>
+        <div class="header-content">
+            <h1>Centre for Management Development</h1>
+            <p class="subtitle">(An Autonomous Institution under the Government of Kerala)</p>
+            <p class="address">CV Raman Pillai Road, Thycaud P.O, Thiruvananthapuram 695014</p>
+        </div>
+    </div>
 
     <table class="details-table">
         <tr>
-            <td class="label">Name</td>
-            <td>{{ $payroll->name }}</td>
+            <td class="label-cell">Name</td>
+            <td class="value-cell">{{ $payroll->name }}</td>
         </tr>
         <tr>
-            <td class="label">Designation</td>
-            <td>{{ $payroll->designation_name ?? $payroll->role }}</td>
+            <td class="label-cell">Designation</td>
+            <td class="value-cell">{{ $payroll->role }}</td>
         </tr>
         <tr>
-            <td class="label">Name of Project</td>
-            <td>{{ $payroll->project_name ?? 'N/A' }}</td>
-        </tr>
-        <tr><td colspan="2" style="height: 10px;"></td></tr>
-        <tr>
-            <td class="label">PAN</td>
-            <td>{{ $payroll->pan_number ?? 'N/A' }}</td>
+            <td colspan="2" style="height: 15px;"></td>
         </tr>
         <tr>
-            <td class="label">Bank Account No.</td>
-            <td>{{ $payroll->account_no ?? 'N/A' }}</td>
+            <td class="label-cell">Name of Project</td>
+            <td class="value-cell">{{ $payroll->project_name ?? 'N/A' }}</td>
         </tr>
         <tr>
-            <td class="label">Bank Name</td>
-            <td>{{ $payroll->bank_name ?? 'N/A' }}</td>
+            <td colspan="2" style="height: 15px;"></td>
         </tr>
         <tr>
-            <td class="label">Bank IFSC</td>
-            <td>{{ $payroll->ifsc_code ?? 'N/A' }}</td>
+            <td class="label-cell">PAN</td>
+            <td class="value-cell">{{ $payroll->pan_number ?? 'N/A' }}</td>
+        </tr>
+        <tr>
+            <td class="label-cell">Bank Account No.</td>
+            <td class="value-cell">{{ $payroll->account_no ?? 'N/A' }}</td>
+        </tr>
+        <tr>
+            <td class="label-cell">Bank Name</td>
+            <td class="value-cell">{{ $payroll->bank_name ?? 'N/A' }}</td>
+        </tr>
+        <tr>
+            <td class="label-cell">Bank IFSC</td>
+            <td class="value-cell">{{ $payroll->ifsc_code ?? 'N/A' }}</td>
         </tr>
     </table>
 
@@ -132,16 +162,18 @@
     <table class="main-table">
         <thead>
             <tr>
-                <th colspan="2">Earnings</th>
-                <th colspan="2">Deductions</th>
+                <th style="width: 32%;">Earnings</th>
+                <th style="width: 18%;"></th>
+                <th style="width: 32%;">Deductions</th>
+                <th style="width: 18%;"></th>
             </tr>
         </thead>
         <tbody>
             <tr>
-                <td style="width: 30%;">Basic Pay</td>
-                <td style="width: 20%;" class="text-right">{{ number_format($basicPay, 2) }}</td>
-                <td style="width: 30%;">Tax Deducted at Source</td>
-                <td style="width: 20%;" class="text-right">{{ $tds > 0 ? number_format($tds, 2) : '-' }}</td>
+                <td>Basic Pay</td>
+                <td class="text-right">{{ number_format($basicPay, 2) }}</td>
+                <td>Tax Deducted at Source</td>
+                <td class="text-right">{{ $tds > 0 ? number_format($tds, 2) : '-' }}</td>
             </tr>
             <tr>
                 <td>DA</td>
@@ -153,7 +185,7 @@
                 <td>HRA</td>
                 <td class="text-right">{{ number_format($hra, 2) }}</td>
                 <td>Loss of pay</td>
-                <td class="text-right">{{ $lop > 0 ? number_format($lop, 2) : '-' }}</td>
+                <td class="text-right">-</td>
             </tr>
             <tr>
                 <td>Arrear</td>
@@ -168,8 +200,8 @@
                 <td class="text-right">{{ $gpf > 0 ? number_format($gpf, 2) : '-' }}</td>
             </tr>
             <tr>
-                <td rowspan="2">Other Allowance</td>
-                <td rowspan="2" class="text-right">{{ $otherAllowance > 0 ? number_format($otherAllowance, 2) : '-' }}</td>
+                <td rowspan="7" style="vertical-align: top;">Other Allowance</td>
+                <td rowspan="7" style="vertical-align: top;" class="text-right">{{ $otherAllowance > 0 ? number_format($otherAllowance, 2) : '-' }}</td>
                 <td>LIC Premium</td>
                 <td class="text-right">{{ $lic > 0 ? number_format($lic, 2) : '-' }}</td>
             </tr>
@@ -178,69 +210,58 @@
                 <td class="text-right">{{ $sli1 > 0 ? number_format($sli1, 2) : '-' }}</td>
             </tr>
             <tr>
-                <td></td>
-                <td></td>
                 <td>SLI 2</td>
                 <td class="text-right">{{ $sli2 > 0 ? number_format($sli2, 2) : '-' }}</td>
             </tr>
             <tr>
-                <td></td>
-                <td></td>
                 <td>SLI 3</td>
                 <td class="text-right">{{ $sli3 > 0 ? number_format($sli3, 2) : '-' }}</td>
             </tr>
             <tr>
-                <td></td>
-                <td></td>
                 <td>GIS</td>
                 <td class="text-right">{{ $gis > 0 ? number_format($gis, 2) : '-' }}</td>
             </tr>
             <tr>
-                <td></td>
-                <td></td>
                 <td>GPAIS</td>
                 <td class="text-right">{{ $gpais > 0 ? number_format($gpais, 2) : '-' }}</td>
             </tr>
             <tr>
-                <td></td>
-                <td></td>
                 <td>Others</td>
                 <td class="text-right">{{ $others > 0 ? number_format($others, 2) : '-' }}</td>
             </tr>
-            <tr style="background-color: #f8f9fa; font-weight: bold;">
-                <td class="text-center">Total</td>
+            <tr style="font-weight: bold;">
+                <td></td>
                 <td class="text-right">{{ number_format($totalEarnings, 2) }}</td>
-                <td class="text-center">Total</td>
+                <td></td>
                 <td class="text-right">{{ number_format($totalDeductions, 2) }}</td>
             </tr>
         </tbody>
     </table>
 
-    <div class="net-salary-block">
-        <div class="net-salary-box">
-            Net &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {{ number_format($netSalary, 2) }}
-        </div>
+    <div class="net-section">
+        <table class="net-table">
+            <tr>
+                <td class="net-label">Net</td>
+                <td class="net-value">{{ number_format($netSalary, 2) }}</td>
+            </tr>
+        </table>
     </div>
 
     <div class="in-words">
         ({{ $netInWords }})
     </div>
 
-    <div class="footer-info">
-        <p>This is issued for the information of : {{ $payroll->name }}</p>
-        <table style="width: 100%; border: none; margin-top: 30px;">
-            <tr>
-                <td style="border: none;">Document No: {{ $payroll->name }}{{ $payroll->paymonth }}{{ $payroll->year }}</td>
-                <td style="border: none; text-align: right;">Date: {{ date('d-m-Y') }}</td>
-            </tr>
-        </table>
+    <div class="issued-to">
+        This is issued for the information of : {{ $payroll->name }}
     </div>
-</div>
 
-@if(!isset($isExport))
-<a href="{{ route('pms.deduction-master.select-employees', $payroll->project_id) }}" class="back-btn">← Back to List</a>
-<button class="print-btn" onclick="window.print()">Print Salary Slip</button>
-@endif
+    <table class="footer-meta">
+        <tr>
+            <td style="width: 50%;">Document No: <span style="font-weight: normal;">{{ $payroll->name }} {{ $payroll->paymonth }}, {{ $payroll->year }}</span></td>
+            <td style="width: 50%; text-align: right;">Date: <span style="font-weight: normal;">{{ date('d-m-Y') }}</span></td>
+        </tr>
+    </table>
+</div>
 
 </body>
 </html>

@@ -13,6 +13,9 @@
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">Active Frozen Employees</h5>
                 <div class="d-flex gap-2">
+                    <a href="{{ route('pms.employees.project-index', ['id' => $project_id]) }}" class="btn btn-label-secondary btn-sm">
+                        <i class="ti ti-arrow-left me-1 ti-xs"></i> Back
+                    </a>
                     <a href="{{ route('pms.pay-item-master.index', $project_id ?? '') }}" class="btn btn-label-secondary btn-sm" title="Pay Item Master">
                         <i class="ti ti-settings me-1 ti-xs"></i> Pay Item Master
                     </a>
