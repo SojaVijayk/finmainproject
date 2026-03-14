@@ -221,6 +221,7 @@
                                 <th class="text-uppercase small text-muted fw-bold">Type</th>
                                 <th class="text-uppercase small text-muted fw-bold">Period</th>
                                 <th class="text-uppercase small text-muted fw-bold">Base Salary</th>
+                                <th class="text-uppercase small text-muted fw-bold">Actual Salary</th>
                                 <th class="text-uppercase small text-muted fw-bold">Total Period Salary (6-Month)</th>
                                 <th class="text-uppercase small text-muted fw-bold" style="width: 180px;">Adjusted Amount</th>
                             </tr>
@@ -230,7 +231,7 @@
                         </tbody>
                         <tfoot class="table-light border-top-0">
                             <tr>
-                                <th colspan="5" class="text-end fw-semibold text-dark">Total Amount:</th>
+                                <th colspan="6" class="text-end fw-semibold text-dark">Total Amount:</th>
                                 <th class="fw-bold text-primary" id="footerTotalAmount">₹0.00</th>
                             </tr>
                         </tfoot>
@@ -562,6 +563,7 @@ $(function () {
                                     <td><span class="badge bg-label-info">${emp.employment_type || 'N/A'}</span></td>
                                     <td><span class="badge bg-label-secondary">${periodText}</span></td>
                                     <td><span class="fw-semibold text-secondary">₹${parseFloat(emp.base_salary).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></td>
+                                    <td><span class="fw-semibold text-success">₹${parseFloat(emp.actual_salary).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></td>
                                     <td><span class="fw-bold text-primary">₹${parseFloat(emp.total_gross).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></td>
                                     <td>
                                         <div class="input-group input-group-sm">

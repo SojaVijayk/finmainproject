@@ -30,6 +30,43 @@ class SalaryManagementController extends Controller
         return view('content.projects.salary-management.index', compact('employmentTypes', 'years', 'months', 'pageConfigs', 'project_id'));
     }
 
+    public function fetchExistingBatches(Request $request, $project_id = null)
+    {
+        $month = $request->month;
+        $year = $request->year;
+        $employmentTypeId = $request->employment_type;
+        $project_id = $project_id ?? $request->project_id ?? 1;
+
+        // Resolve Employment Type Name
+        $employmentType = $employmentTypeId;
+        if (is_numeric($employmentTypeId)) {
+            $et = \App\Models\EmploymentType::find($employmentTypeId);
+            $employmentType = $et ? $et->employment_type : $employmentTypeId;
+        }
+
+        if (!$month || !$year || !$employmentType) {
+            return response()->json(['success' => false, 'message' => 'Missing filters']);
+        }
+
+        $batches = \DB::table('employee_payroll')
+            ->join('project_employee', 'project_employee.p_id', '=', 'employee_payroll.p_id')
+            ->join('service', 'service.p_id', '=', 'employee_payroll.p_id')
+            ->where('employee_payroll.paymonth', $month)
+            ->where('employee_payroll.year', $year)
+            ->where('project_employee.project_id', $project_id)
+            ->where('service.employment_type', $employmentType)
+            ->select(
+                DB::raw("COALESCE(NULLIF(employee_payroll.salary_id, ''), 'Unnamed Batch') as salary_id"),
+                \DB::raw('COUNT(employee_payroll.p_id) as employee_count'),
+                \DB::raw('SUM(employee_payroll.net_salary) as total_net'),
+                \DB::raw('MAX(employee_payroll.is_frozen) as is_frozen')
+            )
+            ->groupBy('employee_payroll.salary_id')
+            ->get();
+
+        return response()->json(['success' => true, 'batches' => $batches]);
+    }
+
     public function selectEmployees(Request $request, $project_id = null)
     {
         $pageConfigs = ['myLayout' => 'horizontal'];
@@ -114,8 +151,36 @@ class SalaryManagementController extends Controller
         }
 
         // Fetch employees using the specific filtered service records
+        $filterSalaryIds = $request->filter_salary_ids ?? [];
+        if (!empty($filterSalaryIds) && !is_array($filterSalaryIds)) {
+            $filterSalaryIds = explode(',', $filterSalaryIds);
+        }
+
         $query = ProjectEmployee::join('service', 'service.p_id', '=', 'project_employee.p_id')
             ->whereIn('service.id', $bestServiceIds);
+
+        if (!empty($filterSalaryIds)) {
+            // Verify which of these IDs actually exist in the database for this period
+            $existingSalaryIds = \DB::table('employee_payroll')
+                ->where('paymonth', $month)
+                ->where('year', $year)
+                ->whereIn('salary_id', $filterSalaryIds)
+                ->distinct()
+                ->pluck('salary_id')
+                ->toArray();
+
+            // Only apply the "whereExists" filter if there are actually existing records to filter by
+            if (!empty($existingSalaryIds)) {
+                $query->whereExists(function ($q) use ($month, $year, $existingSalaryIds) {
+                    $q->select(\DB::raw(1))
+                        ->from('employee_payroll')
+                        ->whereColumn('employee_payroll.p_id', 'project_employee.p_id')
+                        ->where('employee_payroll.paymonth', $month)
+                        ->where('employee_payroll.year', $year)
+                        ->whereIn('employee_payroll.salary_id', $existingSalaryIds);
+                });
+            }
+        }
 
         if ($project_id) {
             $query->where('project_employee.project_id', $project_id);
@@ -561,6 +626,7 @@ class SalaryManagementController extends Controller
 
     public function store(Request $request, $project_id = null)
     {
+        $project_id = $project_id ?? $request->project_id ?? session('payroll_project_id') ?? 1;
         set_time_limit(300); // Increase execution time to 5 minutes
 
         $month = $request->month;
@@ -685,7 +751,7 @@ class SalaryManagementController extends Controller
                         'year' => $year,
                     ],
                     [
-                        'salary_id' => $request->salary_id[$index] ?? null,
+                        'salary_id' => !empty($request->salary_id[$index]) ? $request->salary_id[$index] : ($request->default_salary_id ?? session('payroll_default_salary_id')),
                         'total_working_days' => $workingDayCount,
                         'days_worked' => $daysWorkedCount,
                         'cl_days' => $cl,

@@ -2,6 +2,15 @@
 
 @section('title', 'Salary Management - Final Review')
 
+@section('vendor-style')
+<link rel="stylesheet" href="{{asset('assets/vendor/libs/animate-css/animate.css')}}" />
+<link rel="stylesheet" href="{{asset('assets/vendor/libs/sweetalert2/sweetalert2.css')}}" />
+@endsection
+
+@section('vendor-script')
+<script src="{{asset('assets/vendor/libs/sweetalert2/sweetalert2.js')}}"></script>
+@endsection
+
 @section('content')
 <h4 class="fw-bold py-3 mb-4">
   <span class="text-muted fw-light">PMS / Salary Management /</span> Step 4: Final Review & Submission
@@ -141,16 +150,16 @@
       <div class="d-flex justify-content-between align-items-center">
         <div>
             <a href="{{ route('pms.salary-management.calculation', ['project_id' => $project_id]) }}" onclick="window.location.href=this.href; return false;" class="btn btn-label-secondary">Back</a>
-            <button type="button" id="btn-generate-statement-modal" data-bs-toggle="modal" data-bs-target="#columnSelectionModal" class="btn btn-info {{ $hasProcessedRecords ? '' : 'disabled' }}" style="{{ $hasProcessedRecords ? '' : 'pointer-events: none; opacity: 0.6;' }}">
+            <button type="button" id="btn-generate-statement-modal" data-bs-toggle="modal" data-bs-target="#columnSelectionModal" class="btn btn-info disabled" style="pointer-events: none; opacity: 0.6;">
                 <i class="ti ti-file-invoice me-1"></i> Generate Statement
             </button>
         </div>
         <div>
             <button type="button" class="btn btn-primary me-2" id="btn-freeze">
-                <i class="ti ti-lock me-1"></i> Freeze (Save Draft)
+                <i class="ti ti-lock me-1"></i> Freeze
             </button>
             <button type="button" class="btn btn-success" id="btn-process">
-                <i class="ti ti-check me-1"></i> Submit & Process Selected
+                <i class="ti ti-device-floppy me-1"></i> Save and Submit
             </button>
         </div>
       </div>
@@ -269,7 +278,7 @@
       </div>
     </div>
   </div>
-</div>
+@endsection
 
 @section('page-script')
 <script>
@@ -314,8 +323,27 @@ $(function() {
 
     // 3. Freeze vs Process Logic
     $('#btn-freeze').on('click', function() {
-        $('#freeze-input').val('1');
-        submitForm();
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                title: 'Freeze Payroll?',
+                text: "Are you sure you want to Freeze this Payroll? This action is final and no editing will be possible afterwards.",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#7367f0',
+                cancelButtonColor: '#a8aaae',
+                confirmButtonText: 'Yes, Freeze it!'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    $('#freeze-input').val('1');
+                    submitForm();
+                }
+            });
+        } else {
+            if (confirm('Are you sure you want to Submit this Payroll? This action is final and will generate permanent records.')) {
+                $('#freeze-input').val('1');
+                submitForm();
+            }
+        }
     });
 
     $('#btn-process').on('click', function() {
@@ -384,7 +412,16 @@ $(function() {
             return;
         }
 
-        // Prepare data
+        // Disable buttons during processing
+        const btnSave = $('#btn-process');
+        const btnFreeze = $('#btn-freeze');
+        const originalSaveText = btnSave.html();
+        const originalFreezeText = btnFreeze.html();
+        
+        btnSave.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1" role="status"></span> Saving...');
+        btnFreeze.prop('disabled', true);
+
+        // Harvest form data
         var formData = form.serialize();
 
         // Send AJAX Request
@@ -394,42 +431,52 @@ $(function() {
             data: formData,
             success: function(response) {
                 if (response.success) {
-                    // Check for Redirect (Freeze action)
-                    if (response.redirect_url) {
-                        window.location.href = response.redirect_url;
-                        return;
-                    }
+                    const isSaveAction = ($('#freeze-input').val() == '0');
+                    
+                    // Unified Success Handler
+                    const handleSuccess = () => {
+                        if (isSaveAction) {
+                            // Re-enable buttons so user can continue working/Submit final
+                            btnSave.prop('disabled', false).html(originalSaveText);
+                            btnFreeze.prop('disabled', false);
+                            
+                            // Enable Generate Statement Button if it was blocked
+                            $('#btn-generate-statement-modal').removeClass('disabled').css({
+                                'pointer-events': 'auto',
+                                'opacity': '1'
+                            });
+                        } else if (!isSaveAction) {
+                            // Redirect to Project Employee Management after freezing
+                            window.location.href = "{{ route('pms.employees.project-index', $project_id) }}";
+                        } else if (response.redirect_url) {
+                            window.location.href = response.redirect_url;
+                        } else {
+                            location.reload();
+                        }
+                    };
 
-                    // Show Success Alert
-                    var alertHtml = `
-                        <div class="alert alert-success alert-dismissible fade show" role="alert">
-                          <div class="d-flex">
-                            <i class="ti ti-check me-2"></i>
-                            <div>${response.message}</div>
-                          </div>
-                          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                        </div>
-                    `;
-                    
-                    // Remove existing alerts if any
-                    $('.alert').remove();
-                    
-                    // Prepend new alert to content area
-                    $('.fw-bold.py-3.mb-4').after(alertHtml);
-                    
-                    // Scroll to top
-                    $('html, body').animate({ scrollTop: 0 }, 'fast');
-
-                    // Enable Generate Statement Button if not frozen
-                    if ($('#freeze-input').val() == '0') {
-                        $('#btn-generate-statement-modal').removeClass('disabled').css({
-                            'pointer-events': 'auto',
-                            'opacity': '1'
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({
+                            toast: true,
+                            position: 'top',
+                            showConfirmButton: false,
+                            timer: 2000,
+                            timerProgressBar: true,
+                            icon: 'success',
+                            title: 'Successfully Saved',
+                            willClose: () => {
+                                handleSuccess();
+                            }
                         });
+                    } else {
+                        // Fallback to standard alert + immediate redirect
+                        alert('Saved Successfully!');
+                        handleSuccess();
                     }
-
                 } else {
                     alert('Error: ' + response.message);
+                    btnSave.prop('disabled', false).html(originalSaveText);
+                    btnFreeze.prop('disabled', false);
                 }
                 
                 // Re-enable inputs for potential next action
@@ -455,5 +502,4 @@ $(function() {
     });
 });
 </script>
-@endsection
 @endsection

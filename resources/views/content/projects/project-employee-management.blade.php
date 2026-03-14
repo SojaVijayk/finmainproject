@@ -720,8 +720,8 @@ document.addEventListener('DOMContentLoaded', function () {
       <a href="{{ route('pms.pay-item-master.index', $project_details->id ?? '') }}" class="btn btn-label-secondary" title="Pay Item Master">
         <i class="ti ti-settings me-1 ti-xs"></i> Pay Item Master
       </a>
-      <a href="{{ route('pms.deduction-master.index', $project_details->id ?? '') }}" class="btn btn-label-secondary" title="Deduction Master">
-        <i class="ti ti-receipt-2 me-1 ti-xs"></i> Deduction Master
+      <a href="{{ route('pms.deduction-master.index', $project_details->id ?? '') }}" class="btn btn-label-secondary" title="Salary Deduction Management">
+        <i class="ti ti-receipt-2 me-1 ti-xs"></i> Salary Deduction Management
       </a>
       <a href="{{ route('pms.salary-management.index', $project_details->id ?? '') }}" class="btn btn-label-primary">
         <i class="ti ti-currency-dollar me-1 ti-xs"></i> Salary Management

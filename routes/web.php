@@ -704,6 +704,7 @@ Route::group(['middleware' => 'auth'], function () {
       Route::delete('/pay-item-master/{id}', [PayItemMasterController::class, 'destroy'])->name('pay-item-master.destroy');
       Route::post('/pay-item-master/generate-bill', [PayItemMasterController::class, 'generateBillList'])->name('pay-item-master.generate-bill');
       Route::post('/pay-item-master/store-bill', [PayItemMasterController::class, 'storeBill'])->name('pay-item-master.store-bill');
+      Route::get('/pay-item-master/statement', [PayItemMasterController::class, 'payItemStatement'])->name('pay-item-master.statement');
 
       // Requirements
       Route::get('requirements/master-list', [RequirementController::class, 'masterList'])->name(
@@ -1350,5 +1351,6 @@ Route::prefix('pms/salary-management')->name('pms.salary-management.')->middlewa
     Route::match(['get', 'post'], '/summary/{project_id?}', [App\Http\Controllers\Project\SalaryManagementController::class, 'summary'])->name('summary');
     Route::post('/store/{project_id?}', [App\Http\Controllers\Project\SalaryManagementController::class, 'store'])->name('store');
     Route::get('/salary-statement/{project_id?}', [App\Http\Controllers\Project\SalaryManagementController::class, 'statement'])->name('statement');
+    Route::get('/fetch-batches/{project_id?}', [App\Http\Controllers\Project\SalaryManagementController::class, 'fetchExistingBatches'])->name('fetch-batches');
     Route::get('/{project_id?}', [App\Http\Controllers\Project\SalaryManagementController::class, 'index'])->name('index');
 });

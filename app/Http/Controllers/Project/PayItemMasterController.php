@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\PayItem;
 use App\Models\PayItemSlab;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class PayItemMasterController extends Controller
 {
@@ -295,6 +297,7 @@ class PayItemMasterController extends Controller
                     'current_status'   => $statusLabel,
                     'employment_type'  => $typeLabel,
                     'base_salary'      => $projBase,
+                    'actual_salary'    => (float)($lp->net_salary ?? 0),
                     'total_gross'      => $cumulativeGross,
                     'calculated_amount'=> $calculatedAmount,
                 ];
@@ -471,7 +474,120 @@ class PayItemMasterController extends Controller
             }
         }
 
-        $periodLabel = $isRange ? "{$request->month} {$request->year} to {$request->to_month} {$request->to_year}" : "{$request->month} {$request->year}";
-        return redirect()->back()->with('success', "Pay Item Bill for {$payItem->name} ({$periodLabel}) saved and recomputed successfully!");
+        $url = route('pms.pay-item-master.statement', [
+            'pay_item_id' => $request->pay_item_id,
+            'month'       => $request->month,
+            'year'        => $request->year,
+            'to_month'    => $request->to_month,
+            'to_year'     => $request->to_year,
+            'p_ids'       => implode(',', $pIds),
+            'project_id'  => $payItem->project_id ?? 1
+        ]);
+
+        return redirect($url)->with('success', "Pay Item Bill for {$payItem->name} saved and recomputed successfully!");
+    }
+
+    public function payItemStatement(Request $request)
+    {
+        $payItem = PayItem::findOrFail($request->pay_item_id);
+        $month = $request->month;
+        $year = $request->year;
+        $toMonth = $request->to_month;
+        $toYear = $request->to_year;
+        $pIds = explode(',', $request->p_ids);
+        $projectId = $request->project_id;
+
+        $project = \App\Models\Project::find($projectId);
+        $isRange = !empty($toMonth) && !empty($toYear);
+
+        $monthOrder = [
+            'January' => 1, 'February' => 2, 'March' => 3, 'April' => 4,
+            'May' => 5, 'June' => 6, 'July' => 7, 'August' => 8,
+            'September' => 9, 'October' => 10, 'November' => 11, 'December' => 12
+        ];
+        $monthNames = array_flip($monthOrder);
+
+        $targetPeriods = [];
+        if (!$isRange) {
+            $targetPeriods[] = ['month' => $month, 'year' => $year];
+        } else {
+            $currMonthVal = ($year * 100) + $monthOrder[$month];
+            $endMonthVal  = ($toYear * 100) + $monthOrder[$toMonth];
+
+            while ($currMonthVal <= $endMonthVal) {
+                $y = (int)($currMonthVal / 100);
+                $m = $currMonthVal % 100;
+                $targetPeriods[] = ['month' => $monthNames[$m], 'year' => $y];
+
+                if ($m == 12) {
+                    $currMonthVal = (($y + 1) * 100) + 1;
+                } else {
+                    $currMonthVal++;
+                }
+            }
+        }
+
+        $columnMap = [
+            'pf tax'                      => 'professional_tax',
+            'professional tax'            => 'professional_tax',
+            'pt'                          => 'professional_tax',
+            'festival allowance'          => 'festival_allowance',
+            'bonus'                       => 'bonus',
+            'tds'                         => 'tds',
+            'tds 192 b'                   => 'tds_192_b',
+            'tds 194 j'                   => 'tds_194_j',
+            'esi employer'                => 'esi_employer',
+            'lic'                         => 'lic_others',
+            'epf employers share @ 12%'   => 'epf_employers_share',
+            'edli contribution and admin' => 'edli_charges',
+            'pf'                          => 'pf',
+            'employer contribution'       => 'employer_contribution',
+            'arrear'                      => 'other_allowance',
+        ];
+
+        $normalizedPayItemName = strtolower(trim($payItem->name));
+        $destColumn = null;
+        foreach($columnMap as $key => $col) {
+            if (str_contains($normalizedPayItemName, $key)) {
+                $destColumn = $col;
+                break;
+            }
+        }
+        if (!$destColumn) {
+            $destColumn = ($payItem->type === 'Allowance') ? 'other_allowance' : 'others';
+        }
+
+        $statementData = [];
+        foreach ($pIds as $pId) {
+            $employee = \App\Models\ProjectEmployee::where('p_id', $pId)->first();
+            if (!$employee) continue;
+
+            $totalAmount = 0;
+            foreach ($targetPeriods as $period) {
+                $val = \DB::table('employee_payroll')
+                    ->where('p_id', $pId)
+                    ->where('paymonth', $period['month'])
+                    ->where('year', $period['year'])
+                    ->value($destColumn);
+                $totalAmount += (float)$val;
+            }
+
+            $statementData[] = (object)[
+                'name' => $employee->name,
+                'amount' => $totalAmount,
+                'p_id' => $pId
+            ];
+        }
+
+        $periodLabel = $isRange ? "{$month} {$year} to {$toMonth} {$toYear}" : "{$month} {$year}";
+        $pageConfigs = ['myLayout' => 'blank'];
+
+        if ($request->query('format') === 'pdf') {
+            $pdf = Pdf::loadView('content.projects.pay-item-master.pay-item-statement', compact('statementData', 'payItem', 'periodLabel', 'project', 'pageConfigs'))
+                ->setPaper('a4', 'portrait');
+            return $pdf->stream("Pay_Item_Statement_{$payItem->name}.pdf");
+        }
+
+        return view('content.projects.pay-item-master.pay-item-statement', compact('statementData', 'payItem', 'periodLabel', 'project', 'pageConfigs'));
     }
 }

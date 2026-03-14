@@ -1,10 +1,10 @@
 @extends('layouts/layoutMaster')
 
-@section('title', 'Deduction Master - Frozen Employees')
+@section('title', 'Salary Deduction Management - Frozen Employees')
 
 @section('content')
 <h4 class="fw-bold py-3 mb-4">
-  <span class="text-muted fw-light">PMS / Deduction Master /</span> Frozen Employees
+  <span class="text-muted fw-light">PMS / Salary Deduction Management /</span> Frozen Employees
 </h4>
 
 <div class="card mb-4">
@@ -12,7 +12,7 @@
         <div>
             <h5 class="card-title mb-0">Step 2: Edit Deductions <span class="badge bg-success ms-2" style="font-size: 0.65rem;">Math V2 + Logging Active</span></h5>
             <small class="text-muted">
-                Displaying all active frozen employees across all months. Only deductions enabled in the employee's Deduction Master profile are shown as editable.
+                Displaying all active frozen employees across all months. Only deductions enabled in the employee's Salary Deduction Management profile are shown as editable.
             </small>
         </div>
         <div>
