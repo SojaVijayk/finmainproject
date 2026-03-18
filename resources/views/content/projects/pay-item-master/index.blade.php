@@ -329,7 +329,7 @@
                                 <button type="button" class="btn btn-success flex-grow-1" id="btnDirectSaveBill">
                                     <i class="ti ti-device-floppy me-1 ti-xs"></i> Save
                                 </button>
-                                <button type="button" class="btn btn-primary flex-grow-1" id="btnGenerateList">
+                                <button type="button" class="btn btn-primary flex-grow-1" id="btnGenerateList" disabled>
                                     <i class="ti ti-list me-1 ti-xs"></i> List
                                 </button>
                             </div>
@@ -659,14 +659,6 @@
                     <span class="text-muted small d-block">Id</span>
                     <span class="fw-bold text-primary fs-5" id="modal_id_val">-</span>
                 </div>
-
-                <div class="save-choice-area border-top pt-3 mt-2">
-                    <div class="form-check form-switch mb-0">
-                        <input class="form-check-input custom-switch-success" type="checkbox" id="chkSaveAsNew" checked>
-                        <label class="form-check-label fw-bold text-dark" for="chkSaveAsNew">Save as New Bill (Keep Previous)</label>
-                    </div>
-                    <small class="text-muted d-block mt-1">Uncheck to update the existing record instead.</small>
-                </div>
             </div>
             <div class="modal-footer border-top bg-light">
                 <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -775,7 +767,15 @@ $(function () {
     $('#bill_pay_item_id').trigger('change');
 
     // Auto-fetch on change
-    $(document).on('change', '#bill_month, #bill_year, #bill_employment_type, #bill_pay_item_id', function() {
+    $(document).on('change', '#bill_month, #bill_year, #bill_employment_type, #bill_pay_item_id, #bill_to_month, #bill_to_year', function() {
+        // Require new draft save
+        $('#btnGenerateList').prop('disabled', true);
+        $('#btnDirectSaveBill').prop('disabled', false).removeClass('btn-secondary').addClass('btn-success').html('<i class="ti ti-device-floppy me-1 ti-xs"></i> Save');
+        
+        // Hide previous results
+        $('#billResultsContainer').slideUp();
+        $('#ajaxSummaryWrapper').slideUp();
+
         // Just refresh the DB batches, don't update current draft in real-time
         fetchExistingBills();
     });
@@ -820,56 +820,170 @@ $(function () {
         const batches = window.lastFetchedBatches || [];
         let rowsHtml = '';
 
-        // 1. SHOW DATABASE BATCHES (BASELINE)
         if (batches.length > 0) {
             batches.forEach(batch => {
+                let badgeClass = 'bg-label-secondary';
+                if (batch.status === 'In Progress') badgeClass = 'bg-label-warning';
+                if (batch.status === 'Saved') badgeClass = 'bg-label-success';
+                if (batch.status === 'Finalized') badgeClass = 'bg-label-primary';
+                
+                let actionsHtml = '';
+                if (batch.status !== 'Finalized') {
+                    actionsHtml += `
+                        <button type="button" class="btn btn-outline-warning edit-batch-btn mb-1 w-100"
+                            data-salary-id="${batch.salary_id}"
+                            data-raw-month="${batch.raw_month}"
+                            data-raw-year="${batch.raw_year}"
+                            data-raw-to-month="${batch.raw_to_month || ''}"
+                            data-raw-to-year="${batch.raw_to_year || ''}"
+                            data-raw-item="${batch.raw_pay_item_id}">
+                            <i class="ti ti-edit me-1"></i> Edit
+                        </button>
+                    `;
+                } else {
+                    actionsHtml += `
+                        <button type="button" class="btn btn-outline-secondary d-none view-batch-btn mb-1 w-100"
+                            data-salary-id="${batch.salary_id}">
+                            <i class="ti ti-eye me-1"></i> View
+                        </button>
+                    `;
+                }
+
+                if (batch.status === 'Saved') {
+                    actionsHtml += `
+                        <button type="button" class="btn btn-primary finalize-batch-btn w-100"
+                            data-salary-id="${batch.salary_id}">
+                            <i class="ti ti-check me-1"></i> Finalize
+                        </button>
+                    `;
+                }
+
                 rowsHtml += `
-                    <tr style="cursor: pointer;" class="existing-batch-row db-batch" data-id="${batch.salary_id}">
-                        <td><small class="fw-semibold text-muted">${batch.period_label}</small></td>
-                        <td><span class="badge bg-label-primary small">${batch.pay_item_name}</span></td>
-                        <td><span class="badge bg-label-info small">${batch.employment_type}</span></td>
-                        <td class="text-primary fw-bold">${batch.salary_id}</td>
-                        <td class="text-center"><span class="badge bg-label-info">Processed</span></td>
+                    <tr class="existing-batch-row db-batch" data-id="${batch.salary_id}">
+                        <td class="align-middle">
+                            <span class="badge ${badgeClass} small mb-1">${batch.status}</span><br>
+                            <small class="fw-semibold text-muted">${batch.period_label}</small>
+                        </td>
+                        <td class="align-middle">
+                            <span class="badge bg-label-primary small d-block mb-1">${batch.pay_item_name}</span>
+                            <span class="badge bg-label-info small">${batch.employment_type}</span>
+                        </td>
+                        <td class="align-middle text-primary fw-bold">${batch.salary_id}</td>
+                        <td class="text-center align-middle">
+                            <div class="d-flex flex-column gap-1">
+                                ${actionsHtml}
+                            </div>
+                        </td>
                     </tr>
                 `;
             });
         }
 
-        // 2. SHOW SESSION HISTORY (AUDIT TRAIL OF EDITS/SAVES)
-        if (draftBills.length > 0) {
-            draftBills.forEach((draft, idx) => {
-                rowsHtml += `
-                    <tr style="cursor: pointer;" class="existing-batch-row draft-batch table-light" data-id="${draft.salary_id}">
-                        <td><small class="fw-semibold text-muted">${draft.period_label}</small></td>
-                        <td><span class="badge bg-label-secondary small">${draft.pay_item_name}</span></td>
-                        <td><span class="badge bg-label-info small">${draft.employment_type}</span></td>
-                        <td class="text-secondary fw-bold">${draft.salary_id}</td>
-                        <td class="text-center"><span class="badge bg-label-info">Processed</span></td>
-                    </tr>
-                `;
-            });
-        }
-
-        if (batches.length > 0 || draftBills.length > 0) {
+        if (batches.length > 0) {
             $('#existing-bills-info').removeClass('d-none');
-        }
-
-        if (batches.length === 0) {
+        } else {
             rowsHtml = '<tr><td colspan="5" class="text-center py-4 text-muted">No existing bills found for this selection</td></tr>';
             $('#existing-bills-info').addClass('d-none');
         }
         $('#existing-bills-table-body').html(rowsHtml);
     }
 
-    // Handle clicking on existing batch rows
-    $(document).on('click', '.existing-batch-row', function() {
-        const salaryId = $(this).data('id');
+    // Handle "Edit" button click on existing batch
+    $(document).on('click', '.edit-batch-btn', function() {
+        const btn = $(this);
+        const salaryId = btn.data('salary-id');
+        const rawMonth = btn.data('raw-month');
+        const rawYear = btn.data('raw-year');
+        const rawToMonth = btn.data('raw-to-month');
+        const rawToYear = btn.data('raw-to-year');
+        const rawItemId = btn.data('raw-item');
+
+        // Populate Form
+        if (rawItemId) $('#bill_pay_item_id').val(rawItemId);
+        if (rawMonth) $('#bill_month').val(rawMonth);
+        if (rawYear) $('#bill_year').val(rawYear);
+        
+        if (rawToMonth) {
+            $('#bill_to_month').val(rawToMonth);
+            $('#to_month_container').removeClass('d-none').show();
+        } else {
+            $('#bill_to_month').val('');
+        }
+        
+        if (rawToYear) {
+            $('#bill_to_year').val(rawToYear);
+            $('#to_year_container').removeClass('d-none').show();
+        } else {
+            $('#bill_to_year').val('');
+        }
+
+        // Trigger change once all fields are populated correctly to refresh right side context
+        if (rawItemId) $('#bill_pay_item_id').trigger('change');
+
         $('#bill_salary_id').val(salaryId).addClass('is-valid');
         setTimeout(() => $('#bill_salary_id').removeClass('is-valid'), 1500);
+
+        // Visual feedback
+        $('.existing-batch-row').removeClass('table-warning');
+        $(this).closest('tr').addClass('table-warning');
         
-        // Visual feedback on the row
-        $('.existing-batch-row').removeClass('table-primary');
-        $(this).addClass('table-primary');
+        // Hide existing list if open
+        $('#billResultsContainer').slideUp();
+        $('#ajaxSummaryWrapper').slideUp();
+    });
+
+    // Handle "List" button click on existing batch
+    $(document).on('click', '.list-batch-btn', function() {
+        // First simulate an Edit click to populate the form parameters
+        $(this).siblings('.edit-batch-btn').trigger('click');
+        
+        // Then click Generate List to immediately load the employees
+        setTimeout(() => {
+            $('#btnGenerateList').trigger('click');
+        }, 100);
+    });
+
+    $(document).on('click', '.finalize-batch-btn', function() {
+        if (!confirm('Are you sure you want to Finalize this bill? This will lock it from further editing and automatically apply the amounts to the core payroll module.')) {
+            return;
+        }
+
+        const btn = $(this);
+        const salaryId = btn.data('salary-id');
+        const originalHtml = btn.html();
+        
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Finalizing...');
+
+        $.ajax({
+            url: "{{ route('pms.pay-item-master.finalize-bill') }}",
+            method: 'POST',
+            data: {
+                _token: $('input[name="_token"]').val() || $('meta[name="csrf-token"]').attr('content'),
+                salary_id: salaryId
+            },
+            success: function(res) {
+                if (res.success) {
+                    alert(res.message);
+                    fetchExistingBills();
+                } else {
+                    alert(res.message || 'Error finalizing bill.');
+                }
+            },
+            error: function(xhr) {
+                alert('Failed to finalize bill. ' + (xhr.responseJSON ? xhr.responseJSON.message : ''));
+            },
+            complete: function() {
+                btn.prop('disabled', false).html(originalHtml);
+            }
+        });
+    });
+
+    // Handle "View" button click on existing finalized batch (Read-Only Summary)
+    $(document).on('click', '.view-batch-btn', function() {
+        const salaryId = $(this).data('salary-id');
+        window.location.href = "{{ route('pms.pay-item-master.index') }}?show_summary=1" + 
+                               "&pay_item_id=" + $('#bill_pay_item_id').val() +
+                               "&salary_id=" + salaryId;
     });
 
     $('#btnGenerateList').on('click', function (e) {
@@ -903,7 +1017,8 @@ $(function () {
                 to_month: toMonth,
                 to_year: toYear,
                 project_id: projectId,
-                employment_type: employmentType
+                employment_type: employmentType,
+                salary_id: $('#bill_salary_id').val()
             },
             success: function (res) {
                 // Focus reset: Hide previous results and show history again when generating new list
@@ -969,7 +1084,11 @@ $(function () {
                                     <td>${statusBadge}</td>
                                     <td><span class="badge bg-label-info">${emp.employment_type || 'N/A'}</span></td>
                                     <td><span class="badge bg-label-secondary">${periodText}</span></td>
-                                    <td><span class="fw-semibold text-secondary">₹${parseFloat(emp.base_salary).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></td>
+                                    <td><span class="fw-semibold text-secondary">₹${parseFloat(emp.base_salary).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                                        <input type="hidden" name="base_salary[${emp.p_id}]" value="${emp.base_salary}">
+                                        <input type="hidden" name="actual_salary[${emp.p_id}]" value="${emp.actual_salary}">
+                                        <input type="hidden" name="total_period_salary[${emp.p_id}]" value="${emp.total_gross}">
+                                    </td>
                                     <td><span class="fw-semibold text-success">₹${parseFloat(emp.actual_salary).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></td>
                                     <td><span class="fw-bold text-primary">₹${parseFloat(emp.total_gross).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></td>
                                     <td>
@@ -1046,47 +1165,37 @@ $(function () {
             // STREAMLINED: Open modal directly for list-based saves
             $('#btnTriggerAddPayBill').trigger('click');
         } else {
-            // DIRECT SAVE: Save the form data to history immediately after confirmation
-            if (!confirm('Are you sure you want to save this batch to history?')) {
-                return;
-            }
-
+            // DRAFT SAVE: Form Persistence Step
             const btn = $(this);
             const originalHtml = btn.html();
-            btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Saving...');
+            btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Saving Draft...');
 
             let batchData = $('#generateBillForm').serialize();
+            
             $.ajax({
-                url: "{{ route('pms.pay-item-master.save-batch') }}",
+                url: "{{ route('pms.pay-item-master.draft-bill') }}",
                 method: 'POST',
                 data: batchData,
                 success: function(res) {
                     if (res.success) {
-                        // 1. Update history sidebar
+                        // 1. Enable List Button
+                        $('#btnGenerateList').prop('disabled', false);
+                        
+                        // 2. Change Save button to Draft Saved visually
+                        btn.removeClass('btn-success').addClass('btn-secondary').html('<i class="ti ti-check me-1"></i> Draft Saved');
+                        
+                        // 3. Update sidebar history if requested (optional logic)
                         fetchExistingBills();
                         
-                        // 2. Reveal the purple button
-                        $('#add-pay-bill-action-container').removeClass('d-none').hide().slideDown();
-                        
-                        // 3. Visual feedback
-                        btn.removeClass('btn-success').addClass('btn-label-secondary').html('<i class="ti ti-check me-1"></i> Saved to History');
-                        
-                        // Scroll to the action container
-                        $('html, body').animate({
-                            scrollTop: $("#add-pay-bill-action-container").offset().top - 150
-                        }, 500);
-
-                        // If new ID was generated, update the form field
-                        if (res.summary && res.summary.salaryId && res.summary.salaryId !== 'N/A') {
-                            $('#bill_salary_id').val(res.summary.salaryId);
-                        }
+                        // 4. Notification
+                        alert('Draft saved. You can now List the employees.');
                     } else {
-                        alert(res.message || 'Error saving batch.');
+                        alert(res.message || 'Error saving draft.');
                         btn.html(originalHtml).prop('disabled', false);
                     }
                 },
                 error: function(xhr) {
-                    alert('Failed to save. ' + (xhr.responseJSON ? xhr.responseJSON.message : ''));
+                    alert('Failed to save draft. ' + (xhr.responseJSON ? xhr.responseJSON.message : ''));
                     btn.html(originalHtml).prop('disabled', false);
                 }
             });
@@ -1230,6 +1339,14 @@ $(function () {
     // ---- AJAX Save Pay Item Bill Handler ----
     $('#storeBillForm').on('submit', function(e) {
         e.preventDefault();
+        
+        // Ensure unchecked employees are cleared out if overwritten
+        $('.hidden-unchecked-pid').remove();
+        $('.emp-checkbox:not(:checked)').each(function() {
+            $(this).after(`<input type="hidden" name="p_id[]" value="${$(this).val()}" class="hidden-unchecked-pid">`);
+            $(this).closest('tr').find('.bill-amount-input').val(0);
+        });
+
         const form = $(this);
         const btn = window.lastSaveBtn || $('#btnDirectSaveBill');
         const originalHtml = btn.html();
@@ -1339,16 +1456,10 @@ $(function () {
         btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Saving...');
         
         const salaryId = $('#bill_salary_id').val();
-        const saveAsNew = $('#chkSaveAsNew').is(':checked');
         const isListGenerated = $('#billResultsContainer').is(':visible') && $('.emp-checkbox:checked').length > 0;
 
-        // If saving as new, we must clear any existing salary ID from the submission
-        if (saveAsNew) {
-            $('#store_salary_id').val('');
-            $('#bill_salary_id').val(''); 
-        } else {
-            $('#store_salary_id').val(salaryId);
-        }
+        // Simply bind the exact draft salary ID for backend submission
+        $('#store_salary_id').val(salaryId);
 
         if (isListGenerated) {
             // Traditional List Save -> Generates Official BILL
@@ -1377,9 +1488,6 @@ $(function () {
         } else {
             // Direct Batch Save (Fast path) -> Simple Save to History
             let batchData = $('#generateBillForm').serialize();
-            if (saveAsNew) {
-                batchData = batchData.replace(/&?salary_id=[^&]*/g, '');
-            }
             $.ajax({
                 url: "{{ route('pms.pay-item-master.save-batch') }}",
                 method: 'POST',

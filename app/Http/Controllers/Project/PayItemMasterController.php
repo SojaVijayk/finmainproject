@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Project;
 use App\Http\Controllers\Controller;
 use App\Models\PayItem;
 use App\Models\PayItemSlab;
+use App\Models\EmployeePayBill;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -115,103 +116,99 @@ class PayItemMasterController extends Controller
         return redirect()->back()->with('success', 'Pay Item deleted successfully.');
     }
 
+    public function storeDraftBill(Request $request)
+    {
+        $request->validate([
+            'pay_item_id' => 'required|exists:pay_items,id',
+            'month'       => 'required|string',
+            'year'        => 'required|integer',
+            'to_month'    => 'nullable|string',
+            'to_year'     => 'nullable|integer',
+            'project_id'  => 'nullable',
+            'employment_type' => 'nullable|string',
+            'salary_id'   => 'required|string|max:255'
+        ]);
+
+        $validatedProjectId = $request->project_id;
+        if (!is_numeric($validatedProjectId)) {
+            $validatedProjectId = null;
+        } else {
+            // Verify it actually exists in the DB to prevent foreign key constraint failures
+            $projectExists = \Illuminate\Support\Facades\DB::table('projects')->where('id', $validatedProjectId)->exists();
+            if (!$projectExists) {
+                $validatedProjectId = null;
+            }
+        }
+
+        $bill = EmployeePayBill::updateOrCreate(
+            ['salary_id' => $request->salary_id],
+            [
+                'pay_item_id'     => $request->pay_item_id,
+                'project_id'      => $validatedProjectId,
+                'month'           => $request->month,
+                'year'            => $request->year,
+                'to_month'        => $request->to_month,
+                'to_year'         => $request->to_year,
+                'employment_type' => $request->employment_type,
+                'status'          => 'Draft'
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Draft Pay Item Bill saved successfully.',
+            'bill'    => $bill
+        ]);
+    }
+
     public function fetchExistingBills(Request $request, $project_id = null)
     {
-        $month = $request->month;
-        $year = $request->year;
-        $employmentTypeId = $request->employment_type;
         $project_id = $project_id ?? $request->project_id ?? 1;
 
         // Resolve Employment Type Name
-        $employmentType = $employmentTypeId;
-        if (is_numeric($employmentTypeId)) {
-            $et = \App\Models\EmploymentType::find($employmentTypeId);
-            $employmentType = $et ? $et->employment_type : $employmentTypeId;
+        $employmentType = $request->employment_type;
+        if (is_numeric($employmentType)) {
+            $et = \App\Models\EmploymentType::find($employmentType);
+            $employmentType = $et ? $et->employment_type : $employmentType;
         }
 
-        if (!$month || !$year || !$employmentType) {
-            return response()->json(['success' => false, 'message' => 'Missing filters']);
+        $query = \App\Models\EmployeePayBill::with(['payItem', 'project'])
+                    ->where('project_id', $project_id);
+
+        if ($request->filled('month')) {
+            $query->where('month', $request->month);
+        }
+        if ($request->filled('year')) {
+            $query->where('year', $request->year);
+        }
+        if ($employmentType) {
+            $query->where('employment_type', $employmentType);
         }
 
-        $monthOrder = [
-            'January' => 1, 'February' => 2, 'March' => 3, 'April' => 4,
-            'May' => 5, 'June' => 6, 'July' => 7, 'August' => 8,
-            'September' => 9, 'October' => 10, 'November' => 11, 'December' => 12
-        ];
-        $monthNames = array_flip($monthOrder);
+        $batches = $query->orderBy('created_at', 'desc')->get();
 
-        $monthCase = "CASE paymonth ";
-        foreach($monthOrder as $mName => $mVal) { $monthCase .= "WHEN '{$mName}' THEN {$mVal} "; }
-        $monthCase .= "END";
-
-        // Fetch all active pay items to use for batch identification
-        $allPayItems = PayItem::where('status', 1)->get();
-        $colMap = [];
-        foreach ($allPayItems as $item) {
-            $colMap[$item->name] = $this->resolveDestinationColumn($item);
-        }
-
-        // We group by salary_id to show unique batches
-        $batches = \DB::table('employee_payroll')
-            ->join('project_employee', 'project_employee.p_id', '=', 'employee_payroll.p_id')
-            ->join('service', 'service.p_id', '=', 'employee_payroll.p_id')
-            ->where('project_employee.project_id', $project_id)
-            ->where('service.employment_type', $employmentType)
-            ->where(function($q) use ($month, $year) {
-                // Show batches that have at least one record in this month or year
-                // to be more inclusive while still filtering by context
-                $q->where('employee_payroll.paymonth', $month)
-                  ->where('employee_payroll.year', $year);
-            })
-            ->select(
-                \DB::raw("COALESCE(NULLIF(employee_payroll.salary_id, ''), 'Unnamed Batch') as salary_id"),
-                \DB::raw('COUNT(DISTINCT employee_payroll.p_id) as employee_count'),
-                \DB::raw('MAX(employee_payroll.is_frozen) as is_frozen'),
-                \DB::raw("MIN(employee_payroll.year) as min_year"),
-                \DB::raw("MAX(employee_payroll.year) as max_year"),
-                \DB::raw("MIN($monthCase) as min_m_val"),
-                \DB::raw("MAX($monthCase) as max_m_val"),
-                'service.employment_type'
-            )
-            ->groupBy('employee_payroll.salary_id', 'service.employment_type')
-            ->orderBy('min_year', 'desc')
-            ->orderBy('min_m_val', 'desc')
-            ->get();
-
-        $requestedPayItem = $request->pay_item_id ? PayItem::find($request->pay_item_id) : null;
-
-        foreach ($batches as $batch) {
-            // Construct Period Label
-            $startM = $monthNames[$batch->min_m_val];
-            $endM   = $monthNames[$batch->max_m_val];
-            
-            if ($batch->min_year == $batch->max_year && $batch->min_m_val == $batch->max_m_val) {
-                $batch->period_label = "{$startM} {$batch->min_year}";
-            } else {
-                $batch->period_label = "{$startM} {$batch->min_year} - {$endM} {$batch->max_year}";
+        $formattedBatches = $batches->map(function ($bill) {
+            $periodLabel = $bill->month . ' ' . $bill->year;
+            if ($bill->to_month && $bill->to_year) {
+                $periodLabel .= ' - ' . $bill->to_month . ' ' . $bill->to_year;
             }
 
-            // Identify Pay Item Name
-            $batch->pay_item_name = $requestedPayItem ? $requestedPayItem->name : 'Pay Item Bill'; 
-            
-            // Try to find the specific pay item if it wasn't filtered
-            $sampleRec = \DB::table('employee_payroll')
-                ->where('salary_id', $batch->salary_id)
-                ->where('paymonth', $startM)
-                ->where('year', $batch->min_year)
-                ->first();
-            
-            if ($sampleRec) {
-                foreach ($colMap as $name => $col) {
-                    if (isset($sampleRec->$col) && $sampleRec->$col > 0) {
-                        $batch->pay_item_name = $name;
-                        break;
-                    }
-                }
-            }
-        }
-        
-        return response()->json(['success' => true, 'batches' => $batches]);
+            return [
+                'salary_id'       => $bill->salary_id ?: 'Draft-' . $bill->id,
+                'pay_item_name'   => $bill->payItem ? $bill->payItem->name : 'Unknown',
+                'raw_pay_item_id' => $bill->pay_item_id,
+                'period_label'    => $periodLabel,
+                'raw_month'       => $bill->month,
+                'raw_year'        => $bill->year,
+                'raw_to_month'    => $bill->to_month,
+                'raw_to_year'     => $bill->to_year,
+                'employment_type' => $bill->employment_type ?: 'All Types',
+                'status'          => $bill->status,
+                'employee_count'  => $bill->details()->count()
+            ];
+        });
+
+        return response()->json(['success' => true, 'batches' => $formattedBatches]);
     }
 
     public function generateBillList(Request $request)
@@ -230,6 +227,7 @@ class PayItemMasterController extends Controller
             $payItem = PayItem::with('slabs')->findOrFail($request->pay_item_id);
             $isRange = $request->filled('to_month') && $request->filled('to_year');
             $projectId = $request->project_id;
+            $destColumn = $this->resolveDestinationColumn($payItem);
             
             $monthOrder = [
                 'January' => 1, 'February' => 2, 'March' => 3, 'April' => 4,
@@ -359,7 +357,8 @@ class PayItemMasterController extends Controller
                     'days_worked',
                     'other_allowance',
                     'paymonth',
-                    'year'
+                    'year',
+                    $destColumn
                 );
 
             $salaryRecordsQuery->whereRaw("(year * 100 + CASE 
@@ -428,27 +427,53 @@ class PayItemMasterController extends Controller
                     $latestSalaryId = $lp->salary_id;
                 }
 
-                // The user explicitly requested that "Total Period Salary" should simply be 
-                // a 6-month calculation of the employee's raw base salary for Pay Item generation purposes.
-                // We bypass actual summed payroll historical records for this requirement.
-                $cumulativeGross = $projBase * 6;
+                $numMonths = count($rangeMonths);
+                $numMonths = $numMonths > 0 ? $numMonths : 1;
+                $cumulativeGross = $projBase * $numMonths;
 
                 $calculatedAmount = 0;
-                if ($payItem->is_slab_based && $payItem->slabs->isNotEmpty()) {
-                    $matched = false;
-                    $maxSlab = $payItem->slabs->sortByDesc('salary_to')->first();
+                $hasExistingAmount = false;
+
+                // 1. Check existing draft details first
+                if ($request->salary_id) {
+                    $draftDetailQuery = \DB::table('employee_pay_bill_details')
+                        ->join('employee_pay_bills', 'employee_pay_bills.id', '=', 'employee_pay_bill_details.employee_pay_bill_id')
+                        ->where('employee_pay_bills.salary_id', $request->salary_id)
+                        ->where('employee_pay_bill_details.p_id', $emp->p_id);
                     
-                    foreach ($payItem->slabs as $slab) {
-                        if ($cumulativeGross >= $slab->salary_from && $cumulativeGross <= $slab->salary_to) {
-                            $calculatedAmount = $slab->amount;
-                            $matched = true;
-                            break;
-                        }
+                    if ($draftDetailQuery->exists()) {
+                        $detail = $draftDetailQuery->first();
+                        $calculatedAmount = (float)$detail->adjusted_amount;
+                        $hasExistingAmount = true;
                     }
-                    
-                    // Fallback: If salary exceeds all defined slabs, pick the highest slab's amount
-                    if (!$matched && $cumulativeGross > $maxSlab->salary_to) {
-                        $calculatedAmount = $maxSlab->amount;
+                }
+
+                // Step 2 fallback removed, we exclusively rely on draft state OR fresh calculations.
+                if (!$hasExistingAmount) {
+                    if ($payItem->calculation_type === 'percentage') {
+                        $pct = (float)$payItem->calculation_value;
+                        if ($pct > 0) {
+                            $calculatedAmount = round(($cumulativeGross * $pct) / 100, 2);
+                        }
+                    } elseif ($payItem->calculation_type === 'fixed') {
+                        $calculatedAmount = (float)$payItem->calculation_value * $numMonths;
+                    } elseif ($payItem->calculation_type === 'slab' || $payItem->is_slab_based) {
+                        if ($payItem->slabs->isNotEmpty()) {
+                            $matched = false;
+                            $maxSlab = $payItem->slabs->sortByDesc('salary_to')->first();
+                            
+                            foreach ($payItem->slabs as $slab) {
+                                if ($projBase >= $slab->salary_from && $projBase <= $slab->salary_to) {
+                                    $calculatedAmount = $slab->amount * $numMonths;
+                                    $matched = true;
+                                    break;
+                                }
+                            }
+                            
+                            if (!$matched && $projBase > $maxSlab->salary_to) {
+                                $calculatedAmount = $maxSlab->amount * $numMonths;
+                            }
+                        }
                     }
                 }
 
@@ -476,6 +501,12 @@ class PayItemMasterController extends Controller
                 ];
             }
 
+            if ($request->salary_id) {
+                \App\Models\EmployeePayBill::where('salary_id', $request->salary_id)
+                    ->where('status', 'Draft')
+                    ->update(['status' => 'In Progress']);
+            }
+
             return response()->json([
                 'success'     => true,
                 'pay_item'    => ['name' => $payItem->name, 'type' => $payItem->type],
@@ -501,14 +532,99 @@ class PayItemMasterController extends Controller
             'to_year'     => 'nullable|integer',
             'p_id'        => 'required|array',
             'amount'      => 'required|array',
-            'salary_id'   => 'nullable|string|max:255'
+            'base_salary' => 'required|array',
+            'actual_salary' => 'required|array',
+            'total_period_salary' => 'required|array',
+            'salary_id'   => 'required|string|max:255'
         ]);
 
-        $salaryId = $request->salary_id ?: 'PAY-' . strtoupper(uniqid());
-        $request->merge(['salary_id' => $salaryId]);
+        $draftBill = \App\Models\EmployeePayBill::where('salary_id', $request->salary_id)->firstOrFail();
+        
+        if ($draftBill->status === 'Finalized') {
+            return response()->json(['success' => false, 'message' => 'This bill is already finalized and cannot be modified.'], 403);
+        }
 
-        $payItem = PayItem::findOrFail($request->pay_item_id);
-        $isRange = $request->filled('to_month') && $request->filled('to_year');
+        return \DB::transaction(function() use ($request, $draftBill) {
+            $pIds = $request->p_id;
+            $amounts = $request->amount;
+            $baseSalaries = $request->base_salary;
+            $actualSalaries = $request->actual_salary;
+            $totalPeriodSalaries = $request->total_period_salary;
+
+            $draftBill->details()->delete();
+
+            $insertData = [];
+            $now = now();
+            foreach ($pIds as $pId) {
+                // Ensure no negative values are saved
+                $adjusted = max(0, (float)($amounts[$pId] ?? 0));
+                $insertData[] = [
+                    'employee_pay_bill_id' => $draftBill->id,
+                    'p_id'                 => $pId,
+                    'base_salary'          => max(0, (float)($baseSalaries[$pId] ?? 0)),
+                    'actual_salary'        => max(0, (float)($actualSalaries[$pId] ?? 0)),
+                    'total_period_salary'  => max(0, (float)($totalPeriodSalaries[$pId] ?? 0)),
+                    'adjusted_amount'      => $adjusted,
+                    'created_at'           => $now,
+                    'updated_at'           => $now,
+                ];
+            }
+            
+            if (!empty($insertData)) {
+                foreach (array_chunk($insertData, 500) as $chunk) {
+                    \DB::table('employee_pay_bill_details')->insert($chunk);
+                }
+            }
+
+            $draftBill->update(['status' => 'Saved']);
+
+            if ($request->ajax()) {
+                $totalAmt = array_sum(array_column($insertData, 'adjusted_amount'));
+                $periodLabel = $request->month . ' ' . $request->year;
+                if ($request->filled('to_month') && $request->filled('to_year')) {
+                    $periodLabel .= ' - ' . $request->to_month . ' ' . $request->to_year;
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Pay Item Bill details saved successfully.',
+                    'summary' => [
+                        'salaryId' => $draftBill->salary_id,
+                        'payItem' => ['name' => $draftBill->payItem->name, 'type' => $draftBill->payItem->type],
+                        'periodLabel' => $periodLabel,
+                        'selectedEmploymentType' => $draftBill->employment_type,
+                        'projectTitle' => $draftBill->project ? $draftBill->project->project_title : 'N/A',
+                        'totalAmount' => $totalAmt
+                    ]
+                ]);
+            }
+
+            return redirect()->back()->with('success', 'Bill saved successfully.');
+        });
+    }
+
+    public function finalizeBill(Request $request)
+    {
+        $request->validate([
+            'salary_id' => 'required|string'
+        ]);
+
+        $draftBill = \App\Models\EmployeePayBill::with('details', 'payItem')
+                        ->where('salary_id', $request->salary_id)
+                        ->firstOrFail();
+
+        if ($draftBill->status === 'Finalized') {
+            return response()->json(['success' => false, 'message' => 'Bill is already finalized.'], 400);
+        }
+        if ($draftBill->status !== 'Saved') {
+            return response()->json(['success' => false, 'message' => 'Bill must be in Saved state to finalize.'], 400);
+        }
+
+        $payItem = $draftBill->payItem;
+        $destColumn = $this->resolveDestinationColumn($payItem);
+        $normalizedPayItemName = strtolower(trim($payItem->name));
+        $isFA = ($normalizedPayItemName === 'festival allowance' || $normalizedPayItemName === 'festival');
+        $isBonus = ($normalizedPayItemName === 'bonus' || $normalizedPayItemName === 'bonus allowance' || $normalizedPayItemName === 'salary bonus');
 
         $monthOrder = [
             'January' => 1, 'February' => 2, 'March' => 3, 'April' => 4,
@@ -517,43 +633,24 @@ class PayItemMasterController extends Controller
         ];
         $monthNames = array_flip($monthOrder);
 
-        $destColumn = $this->resolveDestinationColumn($payItem);
-        $normalizedPayItemName = strtolower(trim($payItem->name));
-
-        // Check if the item is a bonus or festival allowance for Net Salary math
-        $isFA = ($normalizedPayItemName === 'festival allowance' || $normalizedPayItemName === 'festival');
-        $isBonus = ($normalizedPayItemName === 'bonus' || $normalizedPayItemName === 'bonus allowance' || $normalizedPayItemName === 'salary bonus');
-
-        $pIds    = $request->p_id;
-        $amounts = $request->amount;
-
-        // Determine the list of (month, year) pairs to update
         $targetPeriods = [];
-        if (!$isRange) {
-            $targetPeriods[] = ['month' => $request->month, 'year' => $request->year];
+        if (!$draftBill->to_month || !$draftBill->to_year) {
+            $targetPeriods[] = ['month' => $draftBill->month, 'year' => $draftBill->year];
         } else {
-            $currMonthVal = ($request->year * 100) + $monthOrder[$request->month];
-            $endMonthVal  = ($request->to_year * 100) + $monthOrder[$request->to_month];
-
+            $currMonthVal = ($draftBill->year * 100) + $monthOrder[$draftBill->month];
+            $endMonthVal  = ($draftBill->to_year * 100) + $monthOrder[$draftBill->to_month];
             while ($currMonthVal <= $endMonthVal) {
-                $y = (int)($currMonthVal / 100);
-                $m = $currMonthVal % 100;
+                $y = (int)($currMonthVal / 100); $m = $currMonthVal % 100;
                 $targetPeriods[] = ['month' => $monthNames[$m], 'year' => $y];
-
-                // Increment month
-                if ($m == 12) {
-                    $currMonthVal = (($y + 1) * 100) + 1;
-                } else {
-                    $currMonthVal++;
-                }
+                if ($m == 12) { $currMonthVal = (($y + 1) * 100) + 1; } else { $currMonthVal++; }
             }
         }
 
-        return \DB::transaction(function() use ($request, $payItem, $destColumn, $isFA, $isBonus, $targetPeriods, $pIds, $amounts) {
-            // 1. Bulk Ensure Existence (Optimized)
-            // Fetch what already exists to avoid 600+ redundant 'updateOrInsert' queries
+        return \DB::transaction(function() use ($draftBill, $destColumn, $isFA, $isBonus, $targetPeriods) {
+            $pIdsToUpdate = $draftBill->details->pluck('p_id')->toArray();
+            
             $existing = \DB::table('employee_payroll')
-                ->whereIn('p_id', $pIds)
+                ->whereIn('p_id', $pIdsToUpdate)
                 ->where(function($q) use ($targetPeriods) {
                     foreach ($targetPeriods as $p) {
                         $q->orWhere(function($sub) use ($p) {
@@ -569,7 +666,7 @@ class PayItemMasterController extends Controller
 
             $toInsert = [];
             $now = now();
-            foreach ($pIds as $pId) {
+            foreach ($pIdsToUpdate as $pId) {
                 foreach ($targetPeriods as $period) {
                     $key = "{$pId}-{$period['month']}-{$period['year']}";
                     if (!isset($existingMap[$key])) {
@@ -577,7 +674,7 @@ class PayItemMasterController extends Controller
                             'p_id' => $pId, 
                             'paymonth' => $period['month'], 
                             'year' => $period['year'],
-                            'salary_id' => $request->salary_id,
+                            'salary_id' => $draftBill->salary_id,
                             'created_at' => $now,
                             'updated_at' => $now
                         ];
@@ -588,9 +685,8 @@ class PayItemMasterController extends Controller
                 \DB::table('employee_payroll')->insert($toInsert);
             }
 
-            // Fetch all records for these employees/periods in ONE query
             $payrollRecords = \DB::table('employee_payroll')
-                ->whereIn('p_id', $pIds)
+                ->whereIn('p_id', $pIdsToUpdate)
                 ->where(function($q) use ($targetPeriods) {
                     foreach ($targetPeriods as $p) {
                         $q->orWhere(function($sub) use ($p) {
@@ -601,48 +697,28 @@ class PayItemMasterController extends Controller
                 ->get()
                 ->groupBy('p_id');
 
-            foreach ($pIds as $pId) {
-                $amt = (float)($amounts[$pId] ?? 0);
-                $empRecords = $payrollRecords->get($pId) ?? collect();
+            $monthsCount = count($targetPeriods);
+            
+            foreach ($draftBill->details as $detail) {
+                $totalAmt = $detail->adjusted_amount;
+                $perMonthAmt = $monthsCount > 0 ? ($totalAmt / $monthsCount) : 0;
+                
+                $empRecords = $payrollRecords->get($detail->p_id) ?? collect();
 
                 foreach ($targetPeriods as $period) {
                     $payroll = $empRecords->where('paymonth', $period['month'])->where('year', $period['year'])->first();
                     if ($payroll) {
-                        // Perform memory calculation based on current state + new amount
-                        $this->applyRecalculation($payroll, $destColumn, $amt, $isFA, $isBonus, $request->salary_id);
+                        $this->applyRecalculation($payroll, $destColumn, round($perMonthAmt, 2), $isFA, $isBonus, $draftBill->salary_id);
                     }
                 }
             }
 
-            if ($request->ajax()) {
-                return response()->json([
-                    'success' => true,
-                    'message' => "Pay Item Bill for {$payItem->name} saved and recomputed successfully!",
-                    'summary' => $this->getStatementData(new Request([
-                        'pay_item_id' => $request->pay_item_id,
-                        'month'        => $request->month,
-                        'year'         => $request->year,
-                        'to_month'     => $request->to_month,
-                        'to_year'      => $request->to_year,
-                        'p_ids'        => implode(',', $pIds),
-                        'employment_type' => $request->employment_type,
-                        'project_id'   => $payItem->project_id ?? 1
-                    ]))
-                ]);
-            }
+            $draftBill->update(['status' => 'Finalized']);
 
-            return redirect()->route('pms.pay-item-master.index', [
-                'project_id'   => $payItem->project_id ?? 1,
-                'pay_item_id'  => $request->pay_item_id,
-                'month'        => $request->month,
-                'year'         => $request->year,
-                'to_month'     => $request->to_month,
-                'to_year'      => $request->to_year,
-                'salary_id'    => $request->salary_id,
-                'employment_type' => $request->employment_type,
-                'show_summary' => 1,
-                'p_ids'        => implode(',', $pIds)
-            ])->with('success', "Pay Item Bill for {$payItem->name} saved and recomputed successfully!");
+            return response()->json([
+                'success' => true,
+                'message' => "Bill Finalized! Amounts injected to Core Payroll successfully.",
+            ]);
         });
     }
 
@@ -663,6 +739,12 @@ class PayItemMasterController extends Controller
         $request->merge(['salary_id' => $salaryId]);
 
         $payItem = PayItem::with('slabs')->findOrFail($request->pay_item_id);
+        
+        if (!$payItem->is_slab_based) {
+            $msg = "Direct save is only supported for slab-based pay items. Please use the 'List' button to enter amounts manually.";
+            return $request->ajax() ? response()->json(['success' => false, 'message' => $msg]) : redirect()->back()->with('error', $msg);
+        }
+
         $isRange = $request->filled('to_month') && $request->filled('to_year');
         $projectId = $request->project_id;
         
@@ -721,21 +803,35 @@ class PayItemMasterController extends Controller
         $amountsMap = [];
 
         foreach ($employees as $emp) {
-            $actualGross = (float)($emp->master_gross ?? 0);
-            if ($actualGross <= 0) $actualGross = (float)($emp->consolidated_pay ?? 0);
-            if ($actualGross <= 0) $actualGross = (float)($emp->master_basic ?? 0) + (float)($emp->master_da ?? 0);
+            $baseSalary = (float)($emp->master_gross ?? 0);
+            if ($baseSalary <= 0) $baseSalary = (float)($emp->consolidated_pay ?? 0);
+            if ($baseSalary <= 0) $baseSalary = (float)($emp->master_basic ?? 0) + (float)($emp->master_da ?? 0);
+
+            $numMonths = count($targetPeriods);
+            $numMonths = $numMonths > 0 ? $numMonths : 1;
+            $cumulativeGross = $baseSalary * $numMonths;
 
             $amount = 0;
-            if ($payItem->is_slab_based) {
-                $slab = $payItem->slabs->where('salary_from', '<=', $actualGross)->where('salary_to', '>=', $actualGross)->first();
-                if (!$slab) { $slab = $payItem->slabs->sortByDesc('salary_to')->first(); }
-                $amount = $slab ? (float)$slab->amount : 0;
-            } else { $amount = 0; }
-
-            if ($amount > 0) {
-                $pIdsToUpdate[] = $emp->p_id;
-                $amountsMap[$emp->p_id] = $amount;
+            if ($payItem->is_slab_based && $payItem->slabs->isNotEmpty()) {
+                $matched = false;
+                $maxSlab = $payItem->slabs->sortByDesc('salary_to')->first();
+                
+                foreach ($payItem->slabs as $slab) {
+                    if ($cumulativeGross >= $slab->salary_from && $cumulativeGross <= $slab->salary_to) {
+                        $amount = $slab->amount;
+                        $matched = true;
+                        break;
+                    }
+                }
+                
+                if (!$matched && $cumulativeGross > $maxSlab->salary_to) {
+                    $amount = $maxSlab->amount;
+                }
             }
+
+            // Always add to map so old values get zeroed out if this is an update
+            $pIdsToUpdate[] = $emp->p_id;
+            $amountsMap[$emp->p_id] = $amount / $numMonths;
         }
 
         if (empty($pIdsToUpdate)) {
@@ -796,13 +892,17 @@ class PayItemMasterController extends Controller
 
             // 3. Sequential processing
             foreach ($pIdsToUpdate as $pId) {
-                $amt = $amountsMap[$pId];
+                $totalAmt = $amountsMap[$pId];
+                
+                $monthsCount = count($targetPeriods);
+                $perMonthAmt = $monthsCount > 0 ? ($totalAmt / $monthsCount) : 0;
+                
                 $empRecords = $payrollRecords->get($pId) ?? collect();
 
                 foreach ($targetPeriods as $period) {
                     $payroll = $empRecords->where('paymonth', $period['month'])->where('year', $period['year'])->first();
                     if ($payroll) {
-                        $this->applyRecalculation($payroll, $destColumn, $amt, $isFA, $isBonus, $request->salary_id);
+                        $this->applyRecalculation($payroll, $destColumn, round($perMonthAmt, 2), $isFA, $isBonus, $request->salary_id);
                     }
                 }
             }
@@ -909,13 +1009,18 @@ class PayItemMasterController extends Controller
             ->keyBy('p_id');
 
         // 2. Fetch all payroll amounts for the current month in ONE query
-        $payrollAmounts = \DB::table('employee_payroll')
+        $payrollAmountsQuery = \DB::table('employee_payroll')
             ->whereIn('p_id', $pIds)
-            ->where('paymonth', $month)
-            ->where('year', $year)
+            ->where(function($q) use ($targetPeriods) {
+                foreach ($targetPeriods as $p) {
+                    $q->orWhere(function($sub) use ($p) {
+                        $sub->where('paymonth', $p['month'])->where('year', $p['year']);
+                    });
+                }
+            })
             ->select('p_id', $destColumn, 'salary_id')
             ->get()
-            ->keyBy('p_id');
+            ->groupBy('p_id');
 
         // 3. Fetch LATEST FREEZE record for each employee in ONE query
         $latestFreezes = \DB::table('employee_payroll')
@@ -940,8 +1045,8 @@ class PayItemMasterController extends Controller
             $emp = $employees->get($pId);
             if (!$emp) continue;
 
-            $payRecord = $payrollAmounts->get($pId);
-            $totalAmount = (float)($payRecord?->$destColumn ?? 0);
+            $payRecords = $payrollAmountsQuery->get($pId) ?? collect();
+            $totalAmount = $payRecords->sum($destColumn);
 
             $projBase = (float)($emp->master_gross ?? 0);
             if ($projBase <= 0) $projBase = (float)($emp->consolidated_pay ?? 0);
@@ -957,7 +1062,7 @@ class PayItemMasterController extends Controller
                 'type' => $typeLabel,
                 'base_salary' => $projBase,
                 'actual_salary' => (float)($lp?->net_salary ?? 0),
-                'total_gross' => $projBase * 6,
+                'total_gross' => $projBase * count($targetPeriods),
                 'amount' => $totalAmount,
             ];
         }
@@ -968,7 +1073,9 @@ class PayItemMasterController extends Controller
 
         $salaryId = null;
         if (!empty($pIds)) {
-            $salaryId = $payrollAmounts->get($pIds[0])?->salary_id;
+            $firstEmpRecords = $payrollAmountsQuery->get($pIds[0]) ?? collect();
+            $firstRecord = $firstEmpRecords->first();
+            $salaryId = $firstRecord ? $firstRecord->salary_id : null;
         }
 
         return [
