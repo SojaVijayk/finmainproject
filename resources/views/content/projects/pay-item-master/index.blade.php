@@ -363,11 +363,10 @@
                             <table class="table table-sm table-bordered table-hover mb-0">
                                 <thead class="table-light">
                                     <tr>
-                                        <th class="text-truncate">Period</th>
+                                        <th class="text-truncate">Period &amp; Status</th>
                                         <th class="text-truncate">Pay Item</th>
-                                        <th class="text-truncate">Employment Type</th>
                                         <th class="text-truncate">Id</th>
-                                        <th class="text-center">Status</th>
+                                        <th class="text-center">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="existing-bills-table-body">
@@ -421,7 +420,6 @@
                                     <th class="text-uppercase small text-muted fw-bold">Type</th>
                                     <th class="text-uppercase small text-muted fw-bold">Period</th>
                                     <th class="text-uppercase small text-muted fw-bold">Base Salary</th>
-                                    <th class="text-uppercase small text-muted fw-bold">Actual Salary</th>
                                     <th class="text-uppercase small text-muted fw-bold">Total Period Salary (6-Month)</th>
                                     <th class="text-uppercase small text-muted fw-bold" style="width: 180px;">Adjusted Amount</th>
                                 </tr>
@@ -431,7 +429,7 @@
                             </tbody>
                             <tfoot class="table-light border-top-0">
                                 <tr>
-                                    <th colspan="6" class="text-end fw-semibold text-dark">Total Amount:</th>
+                                    <th colspan="7" class="text-end fw-semibold text-dark">Total Amount:</th>
                                     <th class="fw-bold text-primary" id="footerTotalAmount">₹0.00</th>
                                 </tr>
                             </tfoot>
@@ -442,11 +440,13 @@
 
         </form>
 
-        {{-- AJAX Summary Container (Now OUTSIDE the hidden results form) --}}
-        <div id="ajaxSummaryWrapper" class="mt-5" style="display: none;">
-            <hr class="my-5 border-2">
-            <div id="ajaxSummaryContainer"></div>
-        </div>
+    </div>
+</div>
+
+{{-- AJAX Summary Container: Full-width OUTSIDE the 2-column row for proper display --}}
+<div class="container-xxl flex-grow-1 container-p-y">
+    <div id="ajaxSummaryWrapper" class="mt-3" style="display: none;">
+        <div id="ajaxSummaryContainer"></div>
     </div>
 </div>
 
@@ -768,9 +768,15 @@ $(function () {
 
     // Auto-fetch on change
     $(document).on('change', '#bill_month, #bill_year, #bill_employment_type, #bill_pay_item_id, #bill_to_month, #bill_to_year', function() {
-        // Require new draft save
-        $('#btnGenerateList').prop('disabled', true);
-        $('#btnDirectSaveBill').prop('disabled', false).removeClass('btn-secondary').addClass('btn-success').html('<i class="ti ti-device-floppy me-1 ti-xs"></i> Save');
+        // Save the current salary_id BEFORE any state changes
+        // so Edit mode doesn't lose the bill binding
+        const currentSalaryId = $('#bill_salary_id').val();
+        
+        // Require new draft save ONLY if salary_id is not already set (new bill mode)
+        if (!currentSalaryId) {
+            $('#btnGenerateList').prop('disabled', true);
+            $('#btnDirectSaveBill').prop('disabled', false).removeClass('btn-secondary').addClass('btn-success').html('<i class="ti ti-device-floppy me-1 ti-xs"></i> Save');
+        }
         
         // Hide previous results
         $('#billResultsContainer').slideUp();
@@ -830,7 +836,7 @@ $(function () {
                 let actionsHtml = '';
                 if (batch.status !== 'Finalized') {
                     actionsHtml += `
-                        <button type="button" class="btn btn-outline-warning edit-batch-btn mb-1 w-100"
+                        <button type="button" class="btn btn-sm btn-outline-warning edit-batch-btn mb-1 w-100"
                             data-salary-id="${batch.salary_id}"
                             data-raw-month="${batch.raw_month}"
                             data-raw-year="${batch.raw_year}"
@@ -840,20 +846,33 @@ $(function () {
                             <i class="ti ti-edit me-1"></i> Edit
                         </button>
                     `;
-                } else {
                     actionsHtml += `
-                        <button type="button" class="btn btn-outline-secondary d-none view-batch-btn mb-1 w-100"
-                            data-salary-id="${batch.salary_id}">
-                            <i class="ti ti-eye me-1"></i> View
+                        <button type="button" class="btn btn-sm btn-outline-info list-batch-btn mb-1 w-100"
+                            data-salary-id="${batch.salary_id}"
+                            data-raw-month="${batch.raw_month}"
+                            data-raw-year="${batch.raw_year}"
+                            data-raw-to-month="${batch.raw_to_month || ''}"
+                            data-raw-to-year="${batch.raw_to_year || ''}"
+                            data-raw-item="${batch.raw_pay_item_id}">
+                            <i class="ti ti-list me-1"></i> List
                         </button>
                     `;
                 }
 
-                if (batch.status === 'Saved') {
+        if (batch.status === 'Saved' || batch.status === 'In Progress' || batch.status === 'Draft') {
                     actionsHtml += `
-                        <button type="button" class="btn btn-primary finalize-batch-btn w-100"
+                        <button type="button" class="btn btn-sm btn-success finalize-batch-btn w-100 mt-1"
                             data-salary-id="${batch.salary_id}">
-                            <i class="ti ti-check me-1"></i> Finalize
+                            <i class="ti ti-file-certificate me-1"></i> Generate Bill
+                        </button>
+                    `;
+                }
+
+                if (batch.status === 'Finalized') {
+                    actionsHtml += `
+                        <button type="button" class="btn btn-sm btn-success view-batch-btn w-100"
+                            data-salary-id="${batch.salary_id}">
+                            <i class="ti ti-eye me-1"></i> View Bill
                         </button>
                     `;
                 }
@@ -868,7 +887,7 @@ $(function () {
                             <span class="badge bg-label-primary small d-block mb-1">${batch.pay_item_name}</span>
                             <span class="badge bg-label-info small">${batch.employment_type}</span>
                         </td>
-                        <td class="align-middle text-primary fw-bold">${batch.salary_id}</td>
+                        <td class="align-middle text-primary fw-bold small">${batch.salary_id}</td>
                         <td class="text-center align-middle">
                             <div class="d-flex flex-column gap-1">
                                 ${actionsHtml}
@@ -882,7 +901,7 @@ $(function () {
         if (batches.length > 0) {
             $('#existing-bills-info').removeClass('d-none');
         } else {
-            rowsHtml = '<tr><td colspan="5" class="text-center py-4 text-muted">No existing bills found for this selection</td></tr>';
+            rowsHtml = '<tr><td colspan="4" class="text-center py-4 text-muted">No existing bills found for this selection</td></tr>';
             $('#existing-bills-info').addClass('d-none');
         }
         $('#existing-bills-table-body').html(rowsHtml);
@@ -920,16 +939,30 @@ $(function () {
         // Trigger change once all fields are populated correctly to refresh right side context
         if (rawItemId) $('#bill_pay_item_id').trigger('change');
 
-        $('#bill_salary_id').val(salaryId).addClass('is-valid');
-        setTimeout(() => $('#bill_salary_id').removeClass('is-valid'), 1500);
+        // CRITICAL: Set the salary_id in the visible form field and make sure it's passed on save
+        $('#bill_salary_id').val(salaryId);
+        
+        // Re-enable and reset the Save Draft button so user can update
+        $('#btnDirectSaveBill').prop('disabled', false)
+            .removeClass('btn-secondary btn-success')
+            .addClass('btn-success')
+            .html('<i class="ti ti-device-floppy me-1"></i> Update Draft');
+        $('#btnGenerateList').prop('disabled', false);
 
-        // Visual feedback
+        // Visual feedback on the row
         $('.existing-batch-row').removeClass('table-warning');
         $(this).closest('tr').addClass('table-warning');
         
-        // Hide existing list if open
+        // Hide existing list and summary if open
         $('#billResultsContainer').slideUp();
         $('#ajaxSummaryWrapper').slideUp();
+        
+        // Show form area in case it was hidden
+        $('#generate-bill-card').closest('.col-md-5').fadeIn();
+        $('#existing-bills-card').closest('.col-md-7').fadeIn();
+
+        // Scroll to form
+        $('html, body').animate({ scrollTop: $('#generate-bill-card').offset().top - 20 }, 400);
     });
 
     // Handle "List" button click on existing batch
@@ -962,7 +995,11 @@ $(function () {
                 salary_id: salaryId
             },
             success: function(res) {
-                if (res.success) {
+                if (res.success && res.summary) {
+                    alert(res.message);
+                    fetchExistingBills();
+                    renderSummary(res);
+                } else if (res.success) {
                     alert(res.message);
                     fetchExistingBills();
                 } else {
@@ -978,12 +1015,31 @@ $(function () {
         });
     });
 
-    // Handle "View" button click on existing finalized batch (Read-Only Summary)
+    // Handle "View Bill" button click on existing finalized batch (Read-Only Summary)
     $(document).on('click', '.view-batch-btn', function() {
         const salaryId = $(this).data('salary-id');
-        window.location.href = "{{ route('pms.pay-item-master.index') }}?show_summary=1" + 
-                               "&pay_item_id=" + $('#bill_pay_item_id').val() +
-                               "&salary_id=" + salaryId;
+        const btn = $(this);
+        const originalHtml = btn.html();
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span>');
+
+        $.ajax({
+            url: "{{ route('pms.pay-item-master.view-bill') }}",
+            method: 'GET',
+            data: { salary_id: salaryId },
+            success: function(res) {
+                if (res.success && res.summary) {
+                    renderSummary(res);
+                } else {
+                    alert(res.message || 'Could not load bill summary.');
+                }
+            },
+            error: function(xhr) {
+                alert('Failed to load bill. ' + (xhr.responseJSON ? xhr.responseJSON.message : ''));
+            },
+            complete: function() {
+                btn.prop('disabled', false).html(originalHtml);
+            }
+        });
     });
 
     $('#btnGenerateList').on('click', function (e) {
@@ -1089,7 +1145,6 @@ $(function () {
                                         <input type="hidden" name="actual_salary[${emp.p_id}]" value="${emp.actual_salary}">
                                         <input type="hidden" name="total_period_salary[${emp.p_id}]" value="${emp.total_gross}">
                                     </td>
-                                    <td><span class="fw-semibold text-success">₹${parseFloat(emp.actual_salary).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></td>
                                     <td><span class="fw-bold text-primary">₹${parseFloat(emp.total_gross).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span></td>
                                     <td>
                                         <div class="input-group input-group-sm">
@@ -1233,7 +1288,6 @@ $(function () {
                         <span class="badge bg-label-secondary small">${s.periodLabel}</span>
                     </td>
                     <td class="text-end amount-column">₹${parseFloat(row.base_salary).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                    <td class="text-end amount-column text-success">₹${parseFloat(row.actual_salary).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                     <td class="text-end amount-column text-primary">₹${parseFloat(row.total_gross).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                     <td class="text-end amount-column fw-bold bg-label-dark text-dark">₹${parseFloat(row.amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                 </tr>
@@ -1282,7 +1336,6 @@ $(function () {
                                 <th class="text-center">TYPE</th>
                                 <th class="text-center">PERIOD</th>
                                 <th class="text-end">BASE SALARY</th>
-                                <th class="text-end">ACTUAL SALARY</th>
                                 <th class="text-end">PERIOD SALARY</th>
                                 <th class="text-end bg-label-dark text-white fw-bold">BILL AMOUNT</th>
                             </tr>
@@ -1290,7 +1343,7 @@ $(function () {
                         <tbody>${rowsHtml}</tbody>
                         <tfoot class="table-light border-top border-dark">
                             <tr>
-                                <th colspan="8" class="text-end py-3 fw-bold fs-5">TOTAL BILL AMOUNT:</th>
+                                <th colspan="7" class="text-end py-3 fw-bold fs-5">TOTAL BILL AMOUNT:</th>
                                 <th class="text-end py-3 text-primary h4 mb-0 amount-column fw-bold">
                                     ₹${grandTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
                                 </th>
@@ -1302,20 +1355,21 @@ $(function () {
         `;
 
         $('#ajaxSummaryContainer').html(summaryHtml);
-        $('#ajaxSummaryWrapper').slideDown(function() {
-            // Focus on results with auto-scroll
-            $('html, body').animate({
-                scrollTop: $("#ajaxSummaryWrapper").offset().top - 20
-            }, 600);
-        });
+        
+        // Show the wrapper and scroll to it
+        $('#ajaxSummaryWrapper').show();
+        
+        // Scroll to bill
+        $('html, body').animate({
+            scrollTop: $('#ajaxSummaryWrapper').offset().top - 20
+        }, 600);
 
         // Hide employee list + reveal button immediately after save
         $('#billResultsContainer').slideUp();
         $('#add-pay-bill-action-container').addClass('d-none');
 
-        // DEDICATED BILL VIEW: Hide Form and History to focus on results
-        $('#generate-bill-card').closest('.col-md-5').fadeOut();
-        $('#existing-bills-card').closest('.col-md-7').fadeOut();
+        // Show the bill in the BOTTOM of the page without hiding the existing layout
+        // Both columns remain visible so the user can still interact with the sidebar
         
         // Update history sidebar in background
         fetchExistingBills();
@@ -1469,11 +1523,17 @@ $(function () {
                 method: 'POST',
                 data: formData,
                 success: function(res) {
-                    if (res.success && res.summary) {
+                    if (res.success) {
                         modal.hide();
-                        // Path 2: Show the official BILL document
-                        renderSummary(res);
+                        alert('Bill saved successfully. You can now review and Finalize it from the Existing Bills list.');
+                        
+                        // Clear the active rendering list so they must interact with history now
+                        $('#billResultsContainer').slideUp();
                         $('#add-pay-bill-action-container').addClass('d-none');
+                        $('#bill_salary_id').val('').removeClass('is-valid');
+                        $('#store_salary_id').val('');
+                        
+                        fetchExistingBills();
                     } else {
                         alert(res.message || 'Error saving bill.');
                     }

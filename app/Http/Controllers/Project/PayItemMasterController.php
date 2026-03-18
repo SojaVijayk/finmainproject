@@ -129,22 +129,15 @@ class PayItemMasterController extends Controller
             'salary_id'   => 'required|string|max:255'
         ]);
 
-        $validatedProjectId = $request->project_id;
-        if (!is_numeric($validatedProjectId)) {
-            $validatedProjectId = null;
-        } else {
-            // Verify it actually exists in the DB to prevent foreign key constraint failures
-            $projectExists = \Illuminate\Support\Facades\DB::table('projects')->where('id', $validatedProjectId)->exists();
-            if (!$projectExists) {
-                $validatedProjectId = null;
-            }
-        }
+        // FK constraint on project_id dropped in migration 2026_03_18_151000
+        // Just store the numeric project_id as-is, null if blank
+        $projectId = is_numeric($request->project_id) ? (int)$request->project_id : null;
 
         $bill = EmployeePayBill::updateOrCreate(
             ['salary_id' => $request->salary_id],
             [
                 'pay_item_id'     => $request->pay_item_id,
-                'project_id'      => $validatedProjectId,
+                'project_id'      => $projectId,
                 'month'           => $request->month,
                 'year'            => $request->year,
                 'to_month'        => $request->to_month,
@@ -172,8 +165,10 @@ class PayItemMasterController extends Controller
             $employmentType = $et ? $et->employment_type : $employmentType;
         }
 
+        $resolvedProjectId = is_numeric($project_id) ? (int)$project_id : null;
+
         $query = \App\Models\EmployeePayBill::with(['payItem', 'project'])
-                    ->where('project_id', $project_id);
+                    ->where('project_id', $resolvedProjectId);
 
         if ($request->filled('month')) {
             $query->where('month', $request->month);
@@ -553,7 +548,23 @@ class PayItemMasterController extends Controller
 
             $draftBill->details()->delete();
 
+            $empDetails = \DB::table('project_employee')
+                ->leftJoin('service', 'project_employee.p_id', '=', 'service.p_id')
+                ->leftJoin('employment_types', 'service.employment_type', '=', 'employment_types.id')
+                ->whereIn('project_employee.p_id', $pIds)
+                ->select(
+                    'project_employee.p_id',
+                    'project_employee.name as employee_name',
+                    'project_employee.status as current_status',
+                    'project_employee.employment_type as pe_type',
+                    'service.employment_type as svc_type',
+                    'employment_types.employment_type as et_label'
+                )
+                ->get()
+                ->keyBy('p_id');
+
             $insertData = [];
+            $statementData = [];
             $now = now();
             foreach ($pIds as $pId) {
                 // Ensure no negative values are saved
@@ -567,6 +578,28 @@ class PayItemMasterController extends Controller
                     'adjusted_amount'      => $adjusted,
                     'created_at'           => $now,
                     'updated_at'           => $now,
+                ];
+
+                $emp = $empDetails->get($pId);
+                $statusLabel = $emp?->current_status ?? 'Unknown';
+                if (is_numeric($statusLabel)) {
+                    $statusLabel = ($statusLabel == 1) ? 'Active' : 'Inactive';
+                }
+                
+                $typeLabel = $emp?->et_label;
+                if (!$typeLabel) {
+                    $typeLabel = $emp?->svc_type ?: ($emp?->pe_type ?: 'N/A');
+                }
+
+                $statementData[] = [
+                    'p_id' => $pId,
+                    'name' => $emp?->employee_name ?? 'Unknown Employee',
+                    'status' => $statusLabel,
+                    'type' => $typeLabel,
+                    'base_salary' => max(0, (float)($baseSalaries[$pId] ?? 0)),
+                    'actual_salary' => max(0, (float)($actualSalaries[$pId] ?? 0)),
+                    'total_gross' => max(0, (float)($totalPeriodSalaries[$pId] ?? 0)),
+                    'amount' => $adjusted
                 ];
             }
             
@@ -594,13 +627,71 @@ class PayItemMasterController extends Controller
                         'periodLabel' => $periodLabel,
                         'selectedEmploymentType' => $draftBill->employment_type,
                         'projectTitle' => $draftBill->project ? $draftBill->project->project_title : 'N/A',
-                        'totalAmount' => $totalAmt
+                        'totalAmount' => $totalAmt,
+                        'statementData' => $statementData
                     ]
                 ]);
             }
 
             return redirect()->back()->with('success', 'Bill saved successfully.');
         });
+    }
+
+    public function viewBill(Request $request)
+    {
+        $request->validate(['salary_id' => 'required|string']);
+
+        $bill = \App\Models\EmployeePayBill::with(['details', 'payItem'])
+                    ->where('salary_id', $request->salary_id)
+                    ->firstOrFail();
+
+        $pIds = $bill->details->pluck('p_id')->toArray();
+        $empDetails = \DB::table('project_employee')
+            ->leftJoin('service', 'project_employee.p_id', '=', 'service.p_id')
+            ->leftJoin('employment_types', 'service.employment_type', '=', 'employment_types.id')
+            ->whereIn('project_employee.p_id', $pIds)
+            ->select('project_employee.p_id', 'project_employee.name as employee_name',
+                     'project_employee.status as current_status', 'project_employee.employment_type as pe_type',
+                     'service.employment_type as svc_type', 'employment_types.employment_type as et_label')
+            ->get()->keyBy('p_id');
+
+        $statementData = [];
+        $totalAmt = 0;
+        foreach ($bill->details as $detail) {
+            $emp = $empDetails->get($detail->p_id);
+            $statusLabel = $emp?->current_status ?? 'Unknown';
+            if (is_numeric($statusLabel)) { $statusLabel = $statusLabel == 1 ? 'Active' : 'Inactive'; }
+            $typeLabel = $emp?->et_label ?: ($emp?->svc_type ?: ($emp?->pe_type ?: 'N/A'));
+            $statementData[] = [
+                'p_id'         => $detail->p_id,
+                'name'         => $emp?->employee_name ?? 'Unknown Employee',
+                'status'       => $statusLabel,
+                'type'         => $typeLabel,
+                'base_salary'  => $detail->base_salary,
+                'actual_salary'=> $detail->actual_salary,
+                'total_gross'  => $detail->total_period_salary,
+                'amount'       => $detail->adjusted_amount
+            ];
+            $totalAmt += $detail->adjusted_amount;
+        }
+
+        $periodLabel = $bill->month . ' ' . $bill->year;
+        if ($bill->to_month && $bill->to_year) {
+            $periodLabel .= ' - ' . $bill->to_month . ' ' . $bill->to_year;
+        }
+
+        return response()->json([
+            'success' => true,
+            'summary' => [
+                'salaryId'              => $bill->salary_id,
+                'payItem'               => ['name' => $bill->payItem->name, 'type' => $bill->payItem->type],
+                'periodLabel'           => $periodLabel,
+                'selectedEmploymentType'=> $bill->employment_type,
+                'projectTitle'          => 'N/A',
+                'totalAmount'           => $totalAmt,
+                'statementData'         => $statementData
+            ]
+        ]);
     }
 
     public function finalizeBill(Request $request)
@@ -616,8 +707,10 @@ class PayItemMasterController extends Controller
         if ($draftBill->status === 'Finalized') {
             return response()->json(['success' => false, 'message' => 'Bill is already finalized.'], 400);
         }
-        if ($draftBill->status !== 'Saved') {
-            return response()->json(['success' => false, 'message' => 'Bill must be in Saved state to finalize.'], 400);
+        
+        // Allow finalizing from any state as long as the bill has employee details saved
+        if ($draftBill->details()->count() === 0) {
+            return response()->json(['success' => false, 'message' => 'Please add employee data to the bill before finalizing. Click "List" then "Save Pay Item Bill" first.'], 400);
         }
 
         $payItem = $draftBill->payItem;
@@ -715,9 +808,68 @@ class PayItemMasterController extends Controller
 
             $draftBill->update(['status' => 'Finalized']);
 
+            $pIds = $draftBill->details->pluck('p_id')->toArray();
+            $empDetails = \DB::table('project_employee')
+                ->leftJoin('service', 'project_employee.p_id', '=', 'service.p_id')
+                ->leftJoin('employment_types', 'service.employment_type', '=', 'employment_types.id')
+                ->whereIn('project_employee.p_id', $pIds)
+                ->select(
+                    'project_employee.p_id',
+                    'project_employee.name as employee_name',
+                    'project_employee.status as current_status',
+                    'project_employee.employment_type as pe_type',
+                    'service.employment_type as svc_type',
+                    'employment_types.employment_type as et_label'
+                )
+                ->get()
+                ->keyBy('p_id');
+
+            $statementData = [];
+            $totalAmt = 0;
+            foreach ($draftBill->details as $detail) {
+                $pId = $detail->p_id;
+                $emp = $empDetails->get($pId);
+
+                $statusLabel = $emp?->current_status ?? 'Unknown';
+                if (is_numeric($statusLabel)) {
+                    $statusLabel = ($statusLabel == 1) ? 'Active' : 'Inactive';
+                }
+                
+                $typeLabel = $emp?->et_label;
+                if (!$typeLabel) {
+                    $typeLabel = $emp?->svc_type ?: ($emp?->pe_type ?: 'N/A');
+                }
+
+                $statementData[] = [
+                    'p_id' => $pId,
+                    'name' => $emp?->employee_name ?? 'Unknown Employee',
+                    'status' => $statusLabel,
+                    'type' => $typeLabel,
+                    'base_salary' => $detail->base_salary,
+                    'actual_salary' => $detail->actual_salary,
+                    'total_gross' => $detail->total_period_salary,
+                    'amount' => $detail->adjusted_amount
+                ];
+                $totalAmt += $detail->adjusted_amount;
+            }
+
+            $periodLabel = $draftBill->month . ' ' . $draftBill->year;
+            if ($draftBill->to_month && $draftBill->to_year) {
+                $periodLabel .= ' - ' . $draftBill->to_month . ' ' . $draftBill->to_year;
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => "Bill Finalized! Amounts injected to Core Payroll successfully.",
+                'summary' => [
+                    'salaryId' => $draftBill->salary_id,
+                    'payItem' => ['name' => $draftBill->payItem->name, 'type' => $draftBill->payItem->type],
+                    'periodLabel' => $periodLabel,
+                    'selectedEmploymentType' => $draftBill->employment_type,
+                    'projectTitle' => $draftBill->project ? $draftBill->project->project_title : 'N/A',
+                    'totalAmount' => $totalAmt,
+                    'statementData' => $statementData
+                ]
             ]);
         });
     }

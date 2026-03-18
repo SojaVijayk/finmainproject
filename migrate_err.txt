@@ -1,0 +1,26 @@
+﻿
+   INFO  Running migrations.  
+
+  2026_03_18_141600_drop_p_id_from_employee_pay_bills_table  22ms FAIL
+
+   Illuminate\Database\QueryException 
+
+  SQLSTATE[42000]: Syntax error or access violation: 1072 Key column 'p_id' doesn't exist in table (Connection: mysql, SQL: alter table `employee_pay_bills` drop `p_id`)
+
+  at vendor\laravel\framework\src\Illuminate\Database\Connection.php:795
+    791Γûò         // If an exception occurs when attempting to run a query, we'll format the error
+    792Γûò         // message to include the bindings with SQL, which will make this exception a
+    793Γûò         // lot more helpful to the developer instead of just the database's errors.
+    794Γûò         catch (Exception $e) {
+  Γ₧£ 795Γûò             throw new QueryException(
+    796Γûò                 $this->getName(), $query, $this->prepareBindings($bindings), $e
+    797Γûò             );
+    798Γûò         }
+    799Γûò     }
+
+  1   vendor\laravel\framework\src\Illuminate\Database\Connection.php:580
+      PDOException::("SQLSTATE[42000]: Syntax error or access violation: 1072 Key column 'p_id' doesn't exist in table")
+
+  2   vendor\laravel\framework\src\Illuminate\Database\Connection.php:580
+      PDOStatement::execute()
+

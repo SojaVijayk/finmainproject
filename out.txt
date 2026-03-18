@@ -1,0 +1,22 @@
+﻿
+   ReflectionException 
+
+  Class "App\Http\Controllers\layouts\NavbarFull" does not exist
+
+  at vendor\laravel\framework\src\Illuminate\Foundation\Console\RouteListCommand.php:223
+    219Γûò             if ($this->isFrameworkController($route)) {
+    220Γûò                 return false;
+    221Γûò             }
+    222Γûò 
+  Γ₧£ 223Γûò             $path = (new ReflectionClass($route->getControllerClass()))
+    224Γûò                                 ->getFileName();
+    225Γûò         } else {
+    226Γûò             return false;
+    227Γûò         }
+
+  1   vendor\laravel\framework\src\Illuminate\Foundation\Console\RouteListCommand.php:223
+      ReflectionClass::__construct("App\Http\Controllers\layouts\NavbarFull")
+
+  2   vendor\laravel\framework\src\Illuminate\Foundation\Console\RouteListCommand.php:145
+      Illuminate\Foundation\Console\RouteListCommand::isVendorRoute(Object(Illuminate\Routing\Route))
+
