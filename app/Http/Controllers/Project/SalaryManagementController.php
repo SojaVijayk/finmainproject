@@ -16,10 +16,12 @@ class SalaryManagementController extends Controller
     {
         $pageConfigs = ['myLayout' => 'horizontal'];
          $employmentTypes = \App\Models\EmploymentType::where('status', 1)->get();
-        // REMOVED: Do not clear pending data here to allow cross-module persistence
-        // if (!$request->has('month')) {
-        //     session()->forget('payroll_pending_data');
-        // }
+        // Fetch context from request or fallback to session
+        $month = $request->month ?? session('payroll_month', date('F'));
+        $year = $request->year ?? session('payroll_year', date('Y'));
+        $employmentTypeId = $request->employment_type ?? session('payroll_employment_type_id');
+        $defaultSalaryId = $request->default_salary_id ?? session('payroll_default_salary_id');
+        $project_id = $project_id ?? $request->project_id ?? session('payroll_project_id') ?? 1;
 
         $years = range(date('Y'), date('Y') - 5);
         $months = [
@@ -27,7 +29,7 @@ class SalaryManagementController extends Controller
             'July', 'August', 'September', 'October', 'November', 'December'
         ];
 
-        return view('content.projects.salary-management.index', compact('employmentTypes', 'years', 'months', 'pageConfigs', 'project_id'));
+        return view('content.projects.salary-management.index', compact('employmentTypes', 'years', 'months', 'pageConfigs', 'project_id', 'month', 'year', 'employmentTypeId', 'defaultSalaryId'));
     }
 
     public function fetchExistingBatches(Request $request, $project_id = null)
@@ -779,6 +781,16 @@ class SalaryManagementController extends Controller
             } else {
                 // If just processed, sync the request data back to session to ensure persistence
                 session(['payroll_pending_data' => $request->all()]);
+                
+                // CRITICAL: Sync Context keys to session so they show up on navigation
+                session([
+                    'payroll_month' => $month,
+                    'payroll_year' => $year,
+                    'payroll_employment_type_id' => $employmentTypeId,
+                    'payroll_employment_type' => $employmentType,
+                    'payroll_project_id' => $project_id,
+                    'payroll_default_salary_id' => $request->default_salary_id ?? session('payroll_default_salary_id')
+                ]);
             }
             
             $redirect = route('pms.salary-management.index', $project_id);

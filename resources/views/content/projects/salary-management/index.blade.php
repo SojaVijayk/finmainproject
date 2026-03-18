@@ -34,22 +34,16 @@
           <div class="mb-3">
             <label class="form-label" for="month">Select Month</label>
             <select id="month" name="month" class="form-select" required>
-              @foreach($months as $month)
-                @php 
-                  $selectedMonth = session('payroll_month', date('F'));
-                @endphp
-                <option value="{{ $month }}" {{ $month == $selectedMonth ? 'selected' : '' }}>{{ $month }}</option>
+              @foreach($months as $m)
+                <option value="{{ $m }}" {{ $m == $month ? 'selected' : '' }}>{{ $m }}</option>
               @endforeach
             </select>
           </div>
           <div class="mb-3">
             <label class="form-label" for="year">Select Year</label>
             <select id="year" name="year" class="form-select" required>
-              @foreach($years as $year)
-                @php
-                  $selectedYear = session('payroll_year', date('Y'));
-                @endphp
-                <option value="{{ $year }}" {{ $year == $selectedYear ? 'selected' : '' }}>{{ $year }}</option>
+              @foreach($years as $y)
+                <option value="{{ $y }}" {{ $y == $year ? 'selected' : '' }}>{{ $y }}</option>
               @endforeach
             </select>
           </div>
@@ -58,13 +52,13 @@
             <select id="employment_type" name="employment_type" class="form-select" required>
               <option value="">Select Type</option>
               @foreach($employmentTypes as $type)
-                <option value="{{ $type->id }}" {{ (old('employment_type') == $type->id || session('payroll_employment_type_id') == $type->id) ? 'selected' : '' }}>{{ $type->employment_type }}</option>
+                <option value="{{ $type->id }}" {{ $type->id == $employmentTypeId ? 'selected' : '' }}>{{ $type->employment_type }}</option>
               @endforeach
             </select>
           </div>
           <div class="mb-3">
             <label class="form-label" for="default_salary_id">Salary ID / Batch Reference (Required)</label>
-            <input type="text" id="default_salary_id" name="default_salary_id" class="form-control" placeholder="e.g. SAL-FEB-2024" value="{{ session('payroll_default_salary_id') }}" required>
+            <input type="text" id="default_salary_id" name="default_salary_id" class="form-control" placeholder="e.g. SAL-FEB-2024" value="{{ $defaultSalaryId }}" required>
             <div class="form-text">This value will be pre-filled for all employees.</div>
           </div>
 
@@ -269,7 +263,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         </td>
                         <td><small>${month} ${year}</small></td>
                         <td><small>${employmentTypeName}</small></td>
-                        <td class="fw-semibold text-primary salary-id-link" style="cursor: pointer;" title="Click to use this ID">${batch.salary_id}</td>
+                        <td class="fw-semibold text-primary salary-id-link" style="cursor: pointer;" title="Click to use this ID">${batch.salary_id && batch.salary_id !== 'null' ? batch.salary_id : 'Unnamed Batch'}</td>
                         <td class="text-center">${statusBadge}</td>
                     </tr>
                 `;

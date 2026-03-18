@@ -699,12 +699,14 @@ Route::group(['middleware' => 'auth'], function () {
       Route::post('/deduction-master/store/{project_id?}', [DeductionMasterController::class, 'storeDeductions'])->name('deduction-master.store');
 
       // Pay Item Master
-      Route::get('/pay-item-master/{project_id?}', [PayItemMasterController::class, 'index'])->name('pay-item-master.index');
       Route::post('/pay-item-master/store', [PayItemMasterController::class, 'store'])->name('pay-item-master.store');
       Route::delete('/pay-item-master/{id}', [PayItemMasterController::class, 'destroy'])->name('pay-item-master.destroy');
       Route::post('/pay-item-master/generate-bill', [PayItemMasterController::class, 'generateBillList'])->name('pay-item-master.generate-bill');
       Route::post('/pay-item-master/store-bill', [PayItemMasterController::class, 'storeBill'])->name('pay-item-master.store-bill');
+      Route::post('/pay-item-master/save-batch', [PayItemMasterController::class, 'saveAndGenerateBatch'])->name('pay-item-master.save-batch');
+      Route::get('/pay-item-master/fetch-batches/{project_id?}', [PayItemMasterController::class, 'fetchExistingBills'])->name('pay-item-master.fetch-batches');
       Route::get('/pay-item-master/statement', [PayItemMasterController::class, 'payItemStatement'])->name('pay-item-master.statement');
+      Route::get('/pay-item-master/{project_id?}', [PayItemMasterController::class, 'index'])->name('pay-item-master.index');
 
       // Requirements
       Route::get('requirements/master-list', [RequirementController::class, 'masterList'])->name(
