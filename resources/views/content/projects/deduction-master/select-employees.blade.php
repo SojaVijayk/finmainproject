@@ -140,8 +140,8 @@
                                 // Gross Salary (before deductions) = prorated + arrear + festival allowance (earning) + bonus (earning)
                                 $computedGrossSalary = $proratedSalary + $arrear + $uiFa['amt'] + $uiBonus['amt'];
                                 
-                                // Sum ALL deduction amounts for net salary computation
-                                $allDeductionAmts = $uiTds['amt'] + $uiEpf['amt'] + $uiPf['amt'] + $uiEdli['amt'] +
+                                // Sum ALL deduction amounts for net salary computation (Employer shares EPF & EDLI are excluded!)
+                                $allDeductionAmts = $uiTds['amt'] + $uiPf['amt'] +
                                                     $ui192['amt'] + $ui194['amt'] + $uiPt['amt'] + $uiEsi['amt'] + 
                                                     $uiLic['amt'] + $uiMedisep['amt'] + $uiGpf['amt'] + 
                                                     $uiSli1['amt'] + $uiSli2['amt'] + $uiSli3['amt'] + 
@@ -273,8 +273,8 @@
 
                                 <td class="text-end fw-semibold">₹{{ number_format($grossSalary, 2) }}</td>
                                 <td class="text-end fw-semibold">₹{{ number_format($computedGrossSalary, 2) }}</td>
-                                <td class="text-end fw-semibold text-secondary">
-                                    ₹{{ number_format($computedNetSalary, 2) }}
+                                <td class="text-end fw-semibold text-secondary" title="Saved Database Value">
+                                    ₹{{ number_format($payroll->net_salary, 2) }}
                                 </td>
                                 <td class="text-end fw-bold text-success">
                                     ₹<span class="current-net-salary-display">{{ number_format($computedNetSalary, 2) }}</span>
@@ -345,8 +345,13 @@ $(document).ready(function() {
             // 2. DEDUCTIONS
             var totalDeductions = 0;
             
-            // Dynamic deductions
+            // Dynamic deductions (Excluding employer contributions from Net Salary drop)
             row.find('.ded-hidden-amt').each(function() {
+                var targetId = $(this).attr('id');
+                // Skip Employer shares EPF & EDLI because they do not reduce employee's net take-home pay
+                if (targetId && (targetId.includes('hidden_epf_') || targetId.includes('hidden_edli_'))) {
+                    return; // Skip
+                }
                 totalDeductions += parseFloat($(this).val()) || 0;
             });
             
