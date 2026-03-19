@@ -686,8 +686,7 @@ class PayItemMasterController extends Controller
         // Build a map: p_id => per-month-amount
         $perMonthMap = [];
         foreach ($bill->details as $detail) {
-            $totalAmt = (float)$detail->adjusted_amount;
-            $perMonthMap[$detail->p_id] = $monthsCount > 0 ? round($totalAmt / $monthsCount, 2) : 0;
+            $perMonthMap[$detail->p_id] = (float)$detail->adjusted_amount;
         }
 
         $frozenUpdated  = 0;
@@ -924,8 +923,7 @@ class PayItemMasterController extends Controller
             $monthsCount = count($targetPeriods);
             
             foreach ($draftBill->details as $detail) {
-                $totalAmt = $detail->adjusted_amount;
-                $perMonthAmt = $monthsCount > 0 ? ($totalAmt / $monthsCount) : 0;
+                $perMonthAmt = (float)$detail->adjusted_amount;
                 
                 $empRecords = $payrollRecords->get($detail->p_id) ?? collect();
 
@@ -1428,13 +1426,21 @@ class PayItemMasterController extends Controller
                            (float)($payroll->pf ?? 0) + (float)($payroll->edli_charges ?? 0) +
                            (float)($payroll->tds_192_b ?? 0) + (float)($payroll->tds_194_j ?? 0) +
                            (float)($payroll->professional_tax ?? 0) + (float)($payroll->esi_employer ?? 0) +
-                           (float)($payroll->lic_others ?? 0) + (float)($payroll->others ?? 0);
+                           (float)($payroll->lic_others ?? 0) + (float)($payroll->others ?? 0) +
+                           (float)($payroll->medisep ?? 0) + (float)($payroll->gpf ?? 0) + 
+                           (float)($payroll->sli1 ?? 0) + (float)($payroll->sli2 ?? 0) +
+                           (float)($payroll->sli3 ?? 0) + (float)($payroll->gis ?? 0) + 
+                           (float)($payroll->gpais ?? 0);
 
         // If the new amount is a deduction, adjust the sum correctly
         if ($destColumn !== 'festival_allowance' && $destColumn !== 'bonus' && $destColumn !== 'other_allowance') {
             // It's a deduction column. We need to re-sum with the NEW amount for this column.
             $totalDeductions = 0;
-            $deductionCols = ['tds', 'epf_employers_share', 'pf', 'edli_charges', 'tds_192_b', 'tds_194_j', 'professional_tax', 'esi_employer', 'lic_others', 'others'];
+            $deductionCols = [
+                'tds', 'epf_employers_share', 'pf', 'edli_charges', 'tds_192_b', 'tds_194_j', 
+                'professional_tax', 'esi_employer', 'lic_others', 'others',
+                'medisep', 'gpf', 'sli1', 'sli2', 'sli3', 'gis', 'gpais'
+            ];
             foreach($deductionCols as $col) {
                 $totalDeductions += ($col === $destColumn) ? $amt : (float)($payroll->$col ?? 0);
             }
