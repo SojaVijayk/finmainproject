@@ -1,0 +1,1 @@
+<?php require __DIR__."/vendor/autoload.php"; $app = require_once __DIR__."/bootstrap/app.php"; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); $dm = DB::table("deduction_masters")->where("p_id", "EMP-1771823591415")->first(); file_put_contents("tmp_dm.json", json_encode($dm, JSON_PRETTY_PRINT));

@@ -683,10 +683,11 @@ class PayItemMasterController extends Controller
 
         $pIds = $bill->details->pluck('p_id')->toArray();
 
-        // Build a map: p_id => amount to apply (full amount, no division per user request)
-        $fullAmtMap = [];
+        // Build a map: p_id => per-month-amount (MUST divide total bill across months so Monthly Net Salary stays accurate)
+        $perMonthMap = [];
         foreach ($bill->details as $detail) {
-            $fullAmtMap[$detail->p_id] = (float)$detail->adjusted_amount;
+            $totalAmt = (float)$detail->adjusted_amount;
+            $perMonthMap[$detail->p_id] = $monthsCount > 0 ? round($totalAmt / $monthsCount, 2) : 0;
         }
 
         $frozenUpdated  = 0;
@@ -694,7 +695,7 @@ class PayItemMasterController extends Controller
         $periodCreated  = 0;
 
         return \DB::transaction(function () use (
-            $bill, $destColumn, $isFA, $isBonus, $billPeriods, $pIds, $fullAmtMap, $now,
+            $bill, $destColumn, $isFA, $isBonus, $billPeriods, $pIds, $perMonthMap, $now,
             &$frozenUpdated, &$periodUpdated, &$periodCreated
         ) {
             // ── PASS 1: Update ALL currently-frozen records for these employees ──────
@@ -707,7 +708,7 @@ class PayItemMasterController extends Controller
 
             $alreadyUpdatedKeys = [];
             foreach ($frozenRecords as $payroll) {
-                $amt = $fullAmtMap[$payroll->p_id] ?? 0;
+                $amt = $perMonthMap[$payroll->p_id] ?? 0;
                 $this->applyRecalculation($payroll, $destColumn, $amt, $isFA, $isBonus);
                 $alreadyUpdatedKeys[] = $payroll->p_id . '-' . $payroll->paymonth . '-' . $payroll->year;
                 $frozenUpdated++;
@@ -716,7 +717,7 @@ class PayItemMasterController extends Controller
             // ── PASS 2: Upsert each bill-period month row (frozen or not) ───────────
             // Ensures future Salary Management freezes also pick up the value.
             foreach ($pIds as $pId) {
-                $amt = $fullAmtMap[$pId] ?? 0;
+                $amt = $perMonthMap[$pId] ?? 0;
                 foreach ($billPeriods as $period) {
                     $skipKey = $pId . '-' . $period['month'] . '-' . $period['year'];
                     if (in_array($skipKey, $alreadyUpdatedKeys)) {
@@ -923,15 +924,16 @@ class PayItemMasterController extends Controller
             $monthsCount = count($targetPeriods);
             
             foreach ($draftBill->details as $detail) {
-                // Apply the exact, full bill amount without dividing by months count
-                $amtToApply = (float)$detail->adjusted_amount;
+                // Must divide the multi-month bill mathematically to ensure single-month Net Salary stays accurate
+                $totalAmt = (float)$detail->adjusted_amount;
+                $perMonthAmt = $monthsCount > 0 ? ($totalAmt / $monthsCount) : 0;
                 
                 $empRecords = $payrollRecords->get($detail->p_id) ?? collect();
 
                 foreach ($targetPeriods as $period) {
                     $payroll = $empRecords->where('paymonth', $period['month'])->where('year', $period['year'])->first();
                     if ($payroll) {
-                        $this->applyRecalculation($payroll, $destColumn, round($amtToApply, 2), $isFA, $isBonus);
+                        $this->applyRecalculation($payroll, $destColumn, round($perMonthAmt, 2), $isFA, $isBonus, $draftBill->salary_id);
                     }
                 }
             }
