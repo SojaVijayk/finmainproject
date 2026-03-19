@@ -433,8 +433,7 @@ $(document).ready(function() {
         calculateNetSalary();
     });
 
-    // Run calculation once on page load to sync percentage amounts with the CURRENT base salary
-    $('.ded-val').trigger('change');
+    // Display initial DB values unmodified until the user manually inputs a value.
 });
 </script>
 @endsection

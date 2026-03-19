@@ -683,10 +683,10 @@ class PayItemMasterController extends Controller
 
         $pIds = $bill->details->pluck('p_id')->toArray();
 
-        // Build a map: p_id => per-month-amount
-        $perMonthMap = [];
+        // Build a map: p_id => amount to apply (full amount, no division per user request)
+        $fullAmtMap = [];
         foreach ($bill->details as $detail) {
-            $perMonthMap[$detail->p_id] = (float)$detail->adjusted_amount;
+            $fullAmtMap[$detail->p_id] = (float)$detail->adjusted_amount;
         }
 
         $frozenUpdated  = 0;
@@ -694,7 +694,7 @@ class PayItemMasterController extends Controller
         $periodCreated  = 0;
 
         return \DB::transaction(function () use (
-            $bill, $destColumn, $isFA, $isBonus, $billPeriods, $pIds, $perMonthMap, $now,
+            $bill, $destColumn, $isFA, $isBonus, $billPeriods, $pIds, $fullAmtMap, $now,
             &$frozenUpdated, &$periodUpdated, &$periodCreated
         ) {
             // ── PASS 1: Update ALL currently-frozen records for these employees ──────
@@ -707,7 +707,7 @@ class PayItemMasterController extends Controller
 
             $alreadyUpdatedKeys = [];
             foreach ($frozenRecords as $payroll) {
-                $amt = $perMonthMap[$payroll->p_id] ?? 0;
+                $amt = $fullAmtMap[$payroll->p_id] ?? 0;
                 $this->applyRecalculation($payroll, $destColumn, $amt, $isFA, $isBonus);
                 $alreadyUpdatedKeys[] = $payroll->p_id . '-' . $payroll->paymonth . '-' . $payroll->year;
                 $frozenUpdated++;
@@ -716,7 +716,7 @@ class PayItemMasterController extends Controller
             // ── PASS 2: Upsert each bill-period month row (frozen or not) ───────────
             // Ensures future Salary Management freezes also pick up the value.
             foreach ($pIds as $pId) {
-                $amt = $perMonthMap[$pId] ?? 0;
+                $amt = $fullAmtMap[$pId] ?? 0;
                 foreach ($billPeriods as $period) {
                     $skipKey = $pId . '-' . $period['month'] . '-' . $period['year'];
                     if (in_array($skipKey, $alreadyUpdatedKeys)) {
@@ -923,14 +923,15 @@ class PayItemMasterController extends Controller
             $monthsCount = count($targetPeriods);
             
             foreach ($draftBill->details as $detail) {
-                $perMonthAmt = (float)$detail->adjusted_amount;
+                // Apply the exact, full bill amount without dividing by months count
+                $amtToApply = (float)$detail->adjusted_amount;
                 
                 $empRecords = $payrollRecords->get($detail->p_id) ?? collect();
 
                 foreach ($targetPeriods as $period) {
                     $payroll = $empRecords->where('paymonth', $period['month'])->where('year', $period['year'])->first();
                     if ($payroll) {
-                        $this->applyRecalculation($payroll, $destColumn, round($perMonthAmt, 2), $isFA, $isBonus);
+                        $this->applyRecalculation($payroll, $destColumn, round($amtToApply, 2), $isFA, $isBonus);
                     }
                 }
             }
@@ -1426,21 +1427,13 @@ class PayItemMasterController extends Controller
                            (float)($payroll->pf ?? 0) + (float)($payroll->edli_charges ?? 0) +
                            (float)($payroll->tds_192_b ?? 0) + (float)($payroll->tds_194_j ?? 0) +
                            (float)($payroll->professional_tax ?? 0) + (float)($payroll->esi_employer ?? 0) +
-                           (float)($payroll->lic_others ?? 0) + (float)($payroll->others ?? 0) +
-                           (float)($payroll->medisep ?? 0) + (float)($payroll->gpf ?? 0) + 
-                           (float)($payroll->sli1 ?? 0) + (float)($payroll->sli2 ?? 0) +
-                           (float)($payroll->sli3 ?? 0) + (float)($payroll->gis ?? 0) + 
-                           (float)($payroll->gpais ?? 0);
+                           (float)($payroll->lic_others ?? 0) + (float)($payroll->others ?? 0);
 
         // If the new amount is a deduction, adjust the sum correctly
         if ($destColumn !== 'festival_allowance' && $destColumn !== 'bonus' && $destColumn !== 'other_allowance') {
             // It's a deduction column. We need to re-sum with the NEW amount for this column.
             $totalDeductions = 0;
-            $deductionCols = [
-                'tds', 'epf_employers_share', 'pf', 'edli_charges', 'tds_192_b', 'tds_194_j', 
-                'professional_tax', 'esi_employer', 'lic_others', 'others',
-                'medisep', 'gpf', 'sli1', 'sli2', 'sli3', 'gis', 'gpais'
-            ];
+            $deductionCols = ['tds', 'epf_employers_share', 'pf', 'edli_charges', 'tds_192_b', 'tds_194_j', 'professional_tax', 'esi_employer', 'lic_others', 'others'];
             foreach($deductionCols as $col) {
                 $totalDeductions += ($col === $destColumn) ? $amt : (float)($payroll->$col ?? 0);
             }
