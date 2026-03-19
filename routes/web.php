@@ -709,6 +709,7 @@ Route::group(['middleware' => 'auth'], function () {
       Route::get('/pay-item-master/fetch-batches/{project_id?}', [PayItemMasterController::class, 'fetchExistingBills'])->name('pay-item-master.fetch-batches');
       Route::get('/pay-item-master/statement', [PayItemMasterController::class, 'payItemStatement'])->name('pay-item-master.statement');
       Route::get('/pay-item-master/view-bill', [PayItemMasterController::class, 'viewBill'])->name('pay-item-master.view-bill');
+      Route::post('/pay-item-master/apply-to-deductions', [PayItemMasterController::class, 'applyToDeductions'])->name('pay-item-master.apply-to-deductions');
       Route::get('/pay-item-master/{project_id?}', [PayItemMasterController::class, 'index'])->name('pay-item-master.index');
 
       // Requirements

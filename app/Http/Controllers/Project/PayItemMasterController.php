@@ -637,6 +637,101 @@ class PayItemMasterController extends Controller
         });
     }
 
+    public function applyToDeductions(Request $request)
+    {
+        $request->validate(['salary_id' => 'required|string']);
+
+        $bill = \App\Models\EmployeePayBill::with('details', 'payItem')
+                    ->where('salary_id', $request->salary_id)
+                    ->firstOrFail();
+
+        if ($bill->status !== 'Finalized') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only Finalized bills can be applied to Salary Deductions.'
+            ], 422);
+        }
+
+        $payItem        = $bill->payItem;
+        $destColumn     = $this->resolveDestinationColumn($payItem);
+        $normalizedName = strtolower(trim($payItem->name));
+        $isFA    = in_array($normalizedName, ['festival allowance', 'festival']);
+        $isBonus = in_array($normalizedName, ['bonus', 'bonus allowance', 'salary bonus', 'incentive']);
+
+        $monthOrder = [
+            'January'=>1,'February'=>2,'March'=>3,'April'=>4,
+            'May'=>5,'June'=>6,'July'=>7,'August'=>8,
+            'September'=>9,'October'=>10,'November'=>11,'December'=>12
+        ];
+        $monthNames = array_flip($monthOrder);
+
+        $targetPeriods = [];
+        if (!$bill->to_month || !$bill->to_year) {
+            $targetPeriods[] = ['month' => $bill->month, 'year' => $bill->year];
+        } else {
+            $curr = ($bill->year * 100) + $monthOrder[$bill->month];
+            $end  = ($bill->to_year * 100) + $monthOrder[$bill->to_month];
+            while ($curr <= $end) {
+                $y = (int)($curr / 100); $m = $curr % 100;
+                $targetPeriods[] = ['month' => $monthNames[$m], 'year' => $y];
+                $curr = ($m === 12) ? (($y + 1) * 100 + 1) : $curr + 1;
+            }
+        }
+
+        $monthsCount  = count($targetPeriods);
+        $now          = now();
+        $createdCount = 0;
+        $updatedCount = 0;
+
+        return \DB::transaction(function () use (
+            $bill, $destColumn, $isFA, $isBonus, $targetPeriods, $monthsCount, $now, &$createdCount, &$updatedCount
+        ) {
+            foreach ($bill->details as $detail) {
+                $pId         = $detail->p_id;
+                $totalAmt    = (float)$detail->adjusted_amount;
+                $perMonthAmt = $monthsCount > 0 ? round($totalAmt / $monthsCount, 2) : 0;
+
+                foreach ($targetPeriods as $period) {
+                    $payroll = \DB::table('employee_payroll')
+                        ->where('p_id', $pId)
+                        ->where('paymonth', $period['month'])
+                        ->where('year', $period['year'])
+                        ->first();
+
+                    if (!$payroll) {
+                        \DB::table('employee_payroll')->insert([
+                            'p_id'       => $pId,
+                            'paymonth'   => $period['month'],
+                            'year'       => $period['year'],
+                            'salary_id'  => $bill->salary_id,
+                            'is_frozen'  => 0,
+                            'created_at' => $now,
+                            'updated_at' => $now,
+                        ]);
+                        $payroll = \DB::table('employee_payroll')
+                            ->where('p_id', $pId)
+                            ->where('paymonth', $period['month'])
+                            ->where('year', $period['year'])
+                            ->first();
+                        $createdCount++;
+                    } else {
+                        $updatedCount++;
+                    }
+
+                    $this->applyRecalculation($payroll, $destColumn, $perMonthAmt, $isFA, $isBonus, $bill->salary_id);
+                }
+            }
+
+            $empCount = $bill->details->count();
+            return response()->json([
+                'success' => true,
+                'message' => "Applied to Salary Deductions! {$empCount} employee(s) x {$monthsCount} month(s). "
+                           . "{$createdCount} payroll row(s) created, {$updatedCount} row(s) updated. "
+                           . "Values will auto-appear in Frozen Employees once that month's salary is frozen.",
+            ]);
+        });
+    }
+
     public function viewBill(Request $request)
     {
         $request->validate(['salary_id' => 'required|string']);
@@ -1243,7 +1338,7 @@ class PayItemMasterController extends Controller
     private function resolveDestinationColumn($payItem)
     {
         $columnMap = [
-            'pf tax'                      => 'professional_tax',
+            'pf tax'                      => 'pf',
             'professional tax'            => 'professional_tax',
             'pt'                          => 'professional_tax',
             'festival allowance'          => 'festival_allowance',

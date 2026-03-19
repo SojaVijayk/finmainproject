@@ -874,6 +874,10 @@ $(function () {
                             data-salary-id="${batch.salary_id}">
                             <i class="ti ti-eye me-1"></i> View Bill
                         </button>
+                        <button type="button" class="btn btn-sm btn-primary apply-deductions-btn w-100 mt-1"
+                            data-salary-id="${batch.salary_id}">
+                            <i class="ti ti-transfer-in me-1"></i> Add to Salary Deductions
+                        </button>
                     `;
                 }
 
@@ -1035,6 +1039,47 @@ $(function () {
             },
             error: function(xhr) {
                 alert('Failed to load bill. ' + (xhr.responseJSON ? xhr.responseJSON.message : ''));
+            },
+            complete: function() {
+                btn.prop('disabled', false).html(originalHtml);
+            }
+        });
+    });
+
+    // Handle "Add to Salary Deductions" button click
+    $(document).on('click', '.apply-deductions-btn', function() {
+        if (!confirm('Add the amounts from this finalized bill to Salary Deductions for all affected employees?\n\nThis will update the Core Payroll records so that Prof. Tax / Festival Allowance / Bonus values auto-fetch in the Frozen Employees deduction screen.')) {
+            return;
+        }
+
+        const btn = $(this);
+        const salaryId = btn.data('salary-id');
+        const originalHtml = btn.html();
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Applying...');
+
+        $.ajax({
+            url: "{{ route('pms.pay-item-master.apply-to-deductions') }}",
+            method: 'POST',
+            data: {
+                _token: $('input[name="_token"]').val() || $('meta[name="csrf-token"]').attr('content'),
+                salary_id: salaryId
+            },
+            success: function(res) {
+                if (res.success) {
+                    // Show a styled success modal instead of plain alert
+                    const msg = res.message || 'Successfully applied to Salary Deductions!';
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({ icon: 'success', title: 'Done!', text: msg, confirmButtonText: 'OK' });
+                    } else {
+                        alert('✅ ' + msg);
+                    }
+                    fetchExistingBills();
+                } else {
+                    alert('Error: ' + (res.message || 'Could not apply to deductions.'));
+                }
+            },
+            error: function(xhr) {
+                alert('Failed: ' + (xhr.responseJSON ? xhr.responseJSON.message : xhr.statusText));
             },
             complete: function() {
                 btn.prop('disabled', false).html(originalHtml);
