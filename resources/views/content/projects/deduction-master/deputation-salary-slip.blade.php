@@ -19,14 +19,14 @@
     $profTax = $payroll->professional_tax;
     $lop = (float)($payroll->lop_days ?? 0); // Display as '-' in table if 0
     
-    $medisep = $payroll->medisep ?? ($dynamicDeductions['MEDISEP'] ?? $dynamicDeductions['Medisep'] ?? 0);
-    $gpf = $payroll->gpf ?? ($payroll->pf ?? 0); 
+    $medisep = $payroll->medisep > 0 ? $payroll->medisep : ($dynamicDeductions['MEDISEP'] ?? $dynamicDeductions['Medisep'] ?? 0);
+    $gpf = $payroll->gpf > 0 ? $payroll->gpf : ($payroll->pf ?? 0); 
     $lic = $payroll->lic + $payroll->lic_others;
-    $sli1 = $payroll->sli1 ?? ($dynamicDeductions['SLI 1'] ?? 0);
-    $sli2 = $payroll->sli2 ?? ($dynamicDeductions['SLI 2'] ?? 0);
-    $sli3 = $payroll->sli3 ?? ($dynamicDeductions['SLI 3'] ?? 0);
-    $gis = $payroll->gis ?? ($dynamicDeductions['GIS'] ?? $dynamicDeductions['Gis'] ?? 0);
-    $gpais = $payroll->gpais ?? ($dynamicDeductions['GPAIS'] ?? 0);
+    $sli1 = $payroll->sli1 > 0 ? $payroll->sli1 : ($dynamicDeductions['SLI 1'] ?? 0);
+    $sli2 = $payroll->sli2 > 0 ? $payroll->sli2 : ($dynamicDeductions['SLI 2'] ?? 0);
+    $sli3 = $payroll->sli3 > 0 ? $payroll->sli3 : ($dynamicDeductions['SLI 3'] ?? 0);
+    $gis = $payroll->gis > 0 ? $payroll->gis : ($dynamicDeductions['GIS'] ?? $dynamicDeductions['Gis'] ?? 0);
+    $gpais = $payroll->gpais > 0 ? $payroll->gpais : ($dynamicDeductions['GPAIS'] ?? 0);
     $others = $payroll->others ?? 0;
 
     $totalDeductions = $tds + $profTax + $medisep + $gpf + $lic + $sli1 + $sli2 + $sli3 + $gis + $gpais + $others;

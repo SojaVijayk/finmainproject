@@ -8,9 +8,12 @@
     $profTax = $payroll->professional_tax;
     $lop = 0; // If LOP amount is available separately, use it. Usually it's already deducted from gross.
     $pf = $payroll->pf;
-    $esi = $payroll->esi_employer;
-    $lic = $payroll->lic_others;
-    $others = $payroll->others;
+    $esi = $payroll->esi ?? 0;
+    $lic = ($payroll->lic_others ?? 0) + ($payroll->lic ?? 0);
+    $others = ($payroll->others ?? 0) + 
+              ($payroll->medisep ?? 0) + ($payroll->gpf ?? 0) + 
+              ($payroll->sli1 ?? 0) + ($payroll->sli2 ?? 0) + ($payroll->sli3 ?? 0) + 
+              ($payroll->gis ?? 0) + ($payroll->gpais ?? 0);
     
     $totalDeductions = $tds + $profTax + $lop + $pf + $esi + $lic + $others;
     $netSalary = $payroll->net_salary;
