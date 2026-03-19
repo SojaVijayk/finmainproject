@@ -665,33 +665,75 @@ class PayItemMasterController extends Controller
         ];
         $monthNames = array_flip($monthOrder);
 
-        $targetPeriods = [];
+        // Build the exact period months from the bill
+        $billPeriods = [];
         if (!$bill->to_month || !$bill->to_year) {
-            $targetPeriods[] = ['month' => $bill->month, 'year' => $bill->year];
+            $billPeriods[] = ['month' => $bill->month, 'year' => $bill->year];
         } else {
             $curr = ($bill->year * 100) + $monthOrder[$bill->month];
             $end  = ($bill->to_year * 100) + $monthOrder[$bill->to_month];
             while ($curr <= $end) {
                 $y = (int)($curr / 100); $m = $curr % 100;
-                $targetPeriods[] = ['month' => $monthNames[$m], 'year' => $y];
+                $billPeriods[] = ['month' => $monthNames[$m], 'year' => $y];
                 $curr = ($m === 12) ? (($y + 1) * 100 + 1) : $curr + 1;
             }
         }
+        $monthsCount = count($billPeriods);
+        $now         = now();
 
-        $monthsCount  = count($targetPeriods);
-        $now          = now();
-        $createdCount = 0;
-        $updatedCount = 0;
+        $pIds = $bill->details->pluck('p_id')->toArray();
+
+        // Build a map: p_id => per-month-amount
+        $perMonthMap = [];
+        foreach ($bill->details as $detail) {
+            $totalAmt = (float)$detail->adjusted_amount;
+            $perMonthMap[$detail->p_id] = $monthsCount > 0 ? round($totalAmt / $monthsCount, 2) : 0;
+        }
+
+        $frozenUpdated  = 0;
+        $periodUpdated  = 0;
+        $periodCreated  = 0;
 
         return \DB::transaction(function () use (
-            $bill, $destColumn, $isFA, $isBonus, $targetPeriods, $monthsCount, $now, &$createdCount, &$updatedCount
+            $bill, $destColumn, $isFA, $isBonus, $billPeriods, $pIds, $perMonthMap, $monthsCount, $now,
+            &$frozenUpdated, &$periodUpdated, &$periodCreated
         ) {
-            foreach ($bill->details as $detail) {
-                $pId         = $detail->p_id;
-                $totalAmt    = (float)$detail->adjusted_amount;
-                $perMonthAmt = $monthsCount > 0 ? round($totalAmt / $monthsCount, 2) : 0;
+            // ── PASS 1: Update ALL currently-frozen records for these employees ──────
+            // This makes the value appear IMMEDIATELY on the Frozen Employees screen
+            // regardless of which month those rows are from.
+            $frozenRecords = \DB::table('employee_payroll')
+                ->whereIn('p_id', $pIds)
+                ->where('is_frozen', 1)
+                ->get();
 
-                foreach ($targetPeriods as $period) {
+            foreach ($frozenRecords as $payroll) {
+                $amt = $perMonthMap[$payroll->p_id] ?? 0;
+                $this->applyDeductionColumn($payroll, $destColumn, $amt, $isFA, $isBonus);
+                $frozenUpdated++;
+            }
+
+            // ── PASS 2: Upsert each bill-period month row (frozen or not) ───────────
+            // Ensures future Salary Management freezes also pick up the value.
+            $billPeriodKeys = [];
+            foreach ($billPeriods as $p) {
+                $billPeriodKeys[] = $p['month'] . '-' . $p['year'];
+            }
+
+            // Fetch already-handled frozen records to avoid double-writing
+            $alreadyUpdatedKeys = [];
+            foreach ($frozenRecords as $r) {
+                $alreadyUpdatedKeys[] = $r->p_id . '-' . $r->paymonth . '-' . $r->year;
+            }
+
+            foreach ($pIds as $pId) {
+                $amt = $perMonthMap[$pId] ?? 0;
+                foreach ($billPeriods as $period) {
+                    $skipKey = $pId . '-' . $period['month'] . '-' . $period['year'];
+                    if (in_array($skipKey, $alreadyUpdatedKeys)) {
+                        // Already updated in Pass 1 (it was frozen) — skip
+                        continue;
+                    }
+
                     $payroll = \DB::table('employee_payroll')
                         ->where('p_id', $pId)
                         ->where('paymonth', $period['month'])
@@ -699,37 +741,85 @@ class PayItemMasterController extends Controller
                         ->first();
 
                     if (!$payroll) {
+                        // Create a minimal stub row; is_frozen=0, salary carries over later
                         \DB::table('employee_payroll')->insert([
-                            'p_id'       => $pId,
-                            'paymonth'   => $period['month'],
-                            'year'       => $period['year'],
-                            'salary_id'  => $bill->salary_id,
-                            'is_frozen'  => 0,
-                            'created_at' => $now,
-                            'updated_at' => $now,
+                            'p_id'           => $pId,
+                            'paymonth'       => $period['month'],
+                            'year'           => $period['year'],
+                            'salary_id'      => $bill->salary_id,
+                            'is_frozen'      => 0,
+                            $destColumn      => $amt,
+                            'created_at'     => $now,
+                            'updated_at'     => $now,
                         ]);
-                        $payroll = \DB::table('employee_payroll')
-                            ->where('p_id', $pId)
-                            ->where('paymonth', $period['month'])
-                            ->where('year', $period['year'])
-                            ->first();
-                        $createdCount++;
+                        $periodCreated++;
                     } else {
-                        $updatedCount++;
+                        // exists but not frozen — update the target column only
+                        $this->applyDeductionColumn($payroll, $destColumn, $amt, $isFA, $isBonus);
+                        $periodUpdated++;
                     }
-
-                    $this->applyRecalculation($payroll, $destColumn, $perMonthAmt, $isFA, $isBonus, $bill->salary_id);
                 }
             }
 
-            $empCount = $bill->details->count();
+            $empCount = count($pIds);
             return response()->json([
                 'success' => true,
-                'message' => "Applied to Salary Deductions! {$empCount} employee(s) x {$monthsCount} month(s). "
-                           . "{$createdCount} payroll row(s) created, {$updatedCount} row(s) updated. "
-                           . "Values will auto-appear in Frozen Employees once that month's salary is frozen.",
+                'message' => "Applied to Salary Deductions successfully! "
+                           . "{$frozenUpdated} frozen record(s) updated (visible now). "
+                           . "{$periodUpdated} bill-period record(s) updated, {$periodCreated} new rows created. "
+                           . "Refresh the Frozen Employees page to see the updated values.",
+                'frozen_updated'  => $frozenUpdated,
+                'period_updated'  => $periodUpdated,
+                'period_created'  => $periodCreated,
             ]);
         });
+    }
+
+    /**
+     * Precisely update a single deduction column in employee_payroll and recompute net salary.
+     * Does NOT touch salary_id or other unrelated columns.
+     */
+    private function applyDeductionColumn($payroll, string $destColumn, float $amt, bool $isFA, bool $isBonus): void
+    {
+        $deductionCols = ['tds','epf_employers_share','pf','edli_charges','tds_192_b',
+                          'tds_194_j','professional_tax','esi_employer','lic_others','others',
+                          'medisep','gpf','sli1','sli2','sli3','gis','gpais'];
+
+        // Rebuild total deductions using the NEW value for destColumn
+        $totalDeductions = 0;
+        foreach ($deductionCols as $col) {
+            if ($isFA || $isBonus) {
+                // FA & Bonus are earnings, not deductions — don't include them
+                $totalDeductions += (float)($payroll->$col ?? 0);
+            } else {
+                $totalDeductions += ($col === $destColumn) ? $amt : (float)($payroll->$col ?? 0);
+            }
+        }
+
+        $grossSalary       = (float)($payroll->gross_salary ?? 0);
+        $totalWorkingDays  = (float)($payroll->total_working_days ?? 0);
+        $daysWorked        = (float)($payroll->days_worked ?? 0);
+        $arrear            = (float)($payroll->other_allowance ?? 0);
+        $festivalAllowance = $isFA    ? $amt : (float)($payroll->festival_allowance ?? 0);
+        $bonus             = $isBonus ? $amt : (float)($payroll->bonus ?? 0);
+
+        $proratedSalary = ($totalWorkingDays > 0)
+            ? ($grossSalary / $totalWorkingDays) * $daysWorked
+            : $grossSalary;
+
+        $computedGross = $proratedSalary + $arrear + $festivalAllowance + $bonus;
+        $netSalary     = $computedGross - $totalDeductions;
+
+        $update = [
+            $destColumn          => $amt,
+            'festival_allowance' => $festivalAllowance,
+            'bonus'              => $bonus,
+            'total_deductions'   => $totalDeductions,
+            'net_salary'         => $netSalary,
+            'updated_at'         => now(),
+        ];
+
+        \DB::table('employee_payroll')->where('id', $payroll->id)->update($update);
     }
 
     public function viewBill(Request $request)
