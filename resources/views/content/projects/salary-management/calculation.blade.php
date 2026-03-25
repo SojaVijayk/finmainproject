@@ -21,6 +21,7 @@
       <input type="hidden" name="year" value="{{ $year }}">
       <input type="hidden" name="employment_type" value="{{ $employmentTypeId }}">
       <input type="hidden" name="freeze" id="freeze-input" value="0">
+      <input type="hidden" name="is_draft" id="is-draft-input" value="0">
 
       <div class="table-responsive text-nowrap mb-4">
         <table class="table table-bordered table-sm">
@@ -123,8 +124,10 @@
       <div class="d-flex justify-content-between align-items-center">
         <a href="{{ route('pms.salary-management.select-employees', ['project_id' => $project_id]) }}" onclick="window.location.href=this.href; return false;" class="btn btn-label-secondary">Back</a>
         <div class="d-flex gap-2">
-
-          <button type="button" class="btn btn-success" onclick="submitForm('{{ route('pms.salary-management.summary', $project_id) }}', '0')">
+          <button type="button" class="btn btn-warning" onclick="submitForm('{{ route('pms.salary-management.store', $project_id) }}', '0', '1')">
+            <i class="ti ti-device-floppy me-1"></i> Save Draft
+          </button>
+          <button type="button" class="btn btn-success" onclick="submitForm('{{ route('pms.salary-management.summary', $project_id) }}', '0', '0')">
             <i class="ti ti-arrow-right me-1"></i> Process (Next)
           </button>
         </div>
@@ -136,9 +139,10 @@
 
 @section('page-script')
 <script>
-function submitForm(action, freezeValue) {
+function submitForm(action, freezeValue, isDraftValue = '0') {
   const form = document.getElementById('payroll-form');
   document.getElementById('freeze-input').value = freezeValue;
+  document.getElementById('is-draft-input').value = isDraftValue;
   form.action = action;
   form.submit();
 }

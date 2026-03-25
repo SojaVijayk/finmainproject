@@ -170,14 +170,14 @@ class PayItemMasterController extends Controller
         $query = \App\Models\EmployeePayBill::with(['payItem', 'project'])
                     ->where('project_id', $resolvedProjectId);
 
-        if ($request->filled('month')) {
-            $query->where('month', $request->month);
-        }
-        if ($request->filled('year')) {
-            $query->where('year', $request->year);
-        }
-        if ($employmentType) {
-            $query->where('employment_type', $employmentType);
+        // Dedicated Filter Logic
+        if ($request->filled('filter_item_name')) {
+            $filterName = strtolower(trim($request->filter_item_name));
+            if ($filterName !== 'all') {
+                $query->whereHas('payItem', function($q) use ($filterName) {
+                    $q->where('name', 'LIKE', '%' . $filterName . '%');
+                });
+            }
         }
 
         $batches = $query->orderBy('created_at', 'desc')->get();
@@ -311,7 +311,11 @@ class PayItemMasterController extends Controller
                     'salary.gross_salary as master_gross',
                     'salary.basic_pay as master_basic',
                     'salary.da as master_da',
-                    'service.consolidated_pay'
+                    'service.consolidated_pay',
+                    'service.basic_pay as svc_basic',
+                    'service.da as svc_da',
+                    'service.hra as svc_hra',
+                    'service.include_hra'
                 )
                 ->distinct()
                 ->orderBy('project_employee.name')
@@ -405,15 +409,30 @@ class PayItemMasterController extends Controller
                 $cumulativeGross = 0;
                 $latestSalaryId = 'N/A';
                 
-                // Determine "Base Salary" strictly from structural master records 
-                // Ignore processed payrolls so prorated months (LOP) don't corrupt the projection
-                $projBase = (float)($emp->master_gross ?? 0);
-                
-                if ($projBase <= 0) {
-                    $projBase = (float)($emp->consolidated_pay ?? 0);
+                // Robust employment type label (needed early for logic)
+                $typeLabel = $emp->et_label;
+                if (!$typeLabel) {
+                    $typeLabel = $emp->svc_type ?: ($emp->pe_type ?: 'N/A');
                 }
-                if ($projBase <= 0) {
-                    $projBase = (float)($emp->master_basic ?? 0) + (float)($emp->master_da ?? 0);
+
+                // Determine "Base Salary" for projection calculation
+                $projBase = 0;
+                
+                if (strtolower(trim($typeLabel)) === 'deputation') {
+                    // Deputation Logic: Strictly Basic + DA (optional HRA) from Service table
+                    $projBase = (float)($emp->svc_basic ?? 0) + (float)($emp->svc_da ?? 0);
+                    if ($emp->include_hra == 1) {
+                        $projBase += (float)($emp->svc_hra ?? 0);
+                    }
+                } else {
+                    // Standard Logic: Try Master Gross, then Consolidated, then Basic+DA 
+                    $projBase = (float)($emp->master_gross ?? 0);
+                    if ($projBase <= 0) {
+                        $projBase = (float)($emp->consolidated_pay ?? 0);
+                    }
+                    if ($projBase <= 0) {
+                        $projBase = (float)($emp->master_basic ?? 0) + (float)($emp->master_da ?? 0);
+                    }
                 }
                 
                 $latestSalaryId = 'N/A';
@@ -458,15 +477,15 @@ class PayItemMasterController extends Controller
                             $maxSlab = $payItem->slabs->sortByDesc('salary_to')->first();
                             
                             foreach ($payItem->slabs as $slab) {
-                                if ($projBase >= $slab->salary_from && $projBase <= $slab->salary_to) {
-                                    $calculatedAmount = $slab->amount * $numMonths;
+                                if ($cumulativeGross >= $slab->salary_from && $cumulativeGross <= $slab->salary_to) {
+                                    $calculatedAmount = $slab->amount;
                                     $matched = true;
                                     break;
                                 }
                             }
                             
-                            if (!$matched && $projBase > $maxSlab->salary_to) {
-                                $calculatedAmount = $maxSlab->amount * $numMonths;
+                            if (!$matched && $cumulativeGross > $maxSlab->salary_to) {
+                                $calculatedAmount = $maxSlab->amount;
                             }
                         }
                     }
@@ -475,12 +494,6 @@ class PayItemMasterController extends Controller
                 $statusLabel = $emp->current_status;
                 if (is_numeric($statusLabel)) {
                     $statusLabel = ($statusLabel == 1) ? 'Active' : 'Inactive';
-                }
-                
-                // Robust employment type label
-                $typeLabel = $emp->et_label;
-                if (!$typeLabel) {
-                    $typeLabel = $emp->svc_type ?: ($emp->pe_type ?: 'N/A');
                 }
 
                 $processedEmployees[] = [
@@ -639,7 +652,10 @@ class PayItemMasterController extends Controller
 
     public function applyToDeductions(Request $request)
     {
-        $request->validate(['salary_id' => 'required|string']);
+        $request->validate([
+            'salary_id' => 'required|string',
+            'mappings'  => 'required|array'
+        ]);
 
         $bill = \App\Models\EmployeePayBill::with('details', 'payItem')
                     ->where('salary_id', $request->salary_id)
@@ -658,114 +674,125 @@ class PayItemMasterController extends Controller
         $isFA    = in_array($normalizedName, ['festival allowance', 'festival']);
         $isBonus = in_array($normalizedName, ['bonus', 'bonus allowance', 'salary bonus', 'incentive']);
 
-        $monthOrder = [
-            'January'=>1,'February'=>2,'March'=>3,'April'=>4,
-            'May'=>5,'June'=>6,'July'=>7,'August'=>8,
-            'September'=>9,'October'=>10,'November'=>11,'December'=>12
-        ];
-        $monthNames = array_flip($monthOrder);
-
-        // Build the exact period months from the bill
-        $billPeriods = [];
-        if (!$bill->to_month || !$bill->to_year) {
-            $billPeriods[] = ['month' => $bill->month, 'year' => $bill->year];
-        } else {
-            $curr = ($bill->year * 100) + $monthOrder[$bill->month];
-            $end  = ($bill->to_year * 100) + $monthOrder[$bill->to_month];
-            while ($curr <= $end) {
-                $y = (int)($curr / 100); $m = $curr % 100;
-                $billPeriods[] = ['month' => $monthNames[$m], 'year' => $y];
-                $curr = ($m === 12) ? (($y + 1) * 100 + 1) : $curr + 1;
-            }
-        }
-        $monthsCount = count($billPeriods);
-        $now         = now();
-
-        $pIds = $bill->details->pluck('p_id')->toArray();
-
-        // Build a map: p_id => per-month-amount (MUST divide total bill across months so Monthly Net Salary stays accurate)
         $perMonthMap = [];
         foreach ($bill->details as $detail) {
-            $totalAmt = (float)$detail->adjusted_amount;
-            $perMonthMap[$detail->p_id] = $monthsCount > 0 ? round($totalAmt / $monthsCount, 2) : 0;
+            $perMonthMap[$detail->p_id] = (float)$detail->adjusted_amount;
         }
 
-        $frozenUpdated  = 0;
-        $periodUpdated  = 0;
-        $periodCreated  = 0;
+        $frozenUpdated = 0;
+        $unfrozenUpdated = 0;
+        $mappings = $request->mappings; // [ ['p_id' => '...', 'paymonth' => '...', 'year' => '...'], ... ]
 
         return \DB::transaction(function () use (
-            $bill, $destColumn, $isFA, $isBonus, $billPeriods, $pIds, $perMonthMap, $now,
-            &$frozenUpdated, &$periodUpdated, &$periodCreated
+            $bill, $destColumn, $isFA, $isBonus, $perMonthMap, $mappings, &$frozenUpdated, &$unfrozenUpdated
         ) {
-            // ── PASS 1: Update ALL currently-frozen records for these employees ──────
-            // This makes the value appear IMMEDIATELY on the Frozen Employees screen
-            // regardless of which month those rows are from.
-            $frozenRecords = \DB::table('employee_payroll')
-                ->whereIn('p_id', $pIds)
-                ->where('is_frozen', 1)
-                ->get();
+            foreach ($mappings as $map) {
+                // If the user selected 'None' or didn't map a bill, skip
+                if (empty($map['paymonth']) || empty($map['year'])) {
+                    continue;
+                }
 
-            $alreadyUpdatedKeys = [];
-            foreach ($frozenRecords as $payroll) {
-                $amt = $perMonthMap[$payroll->p_id] ?? 0;
-                $this->applyRecalculation($payroll, $destColumn, $amt, $isFA, $isBonus);
-                $alreadyUpdatedKeys[] = $payroll->p_id . '-' . $payroll->paymonth . '-' . $payroll->year;
-                $frozenUpdated++;
-            }
+                $pId = $map['p_id'];
+                $month = $map['paymonth'];
+                $year = $map['year'];
 
-            // ── PASS 2: Upsert each bill-period month row (frozen or not) ───────────
-            // Ensures future Salary Management freezes also pick up the value.
-            foreach ($pIds as $pId) {
                 $amt = $perMonthMap[$pId] ?? 0;
-                foreach ($billPeriods as $period) {
-                    $skipKey = $pId . '-' . $period['month'] . '-' . $period['year'];
-                    if (in_array($skipKey, $alreadyUpdatedKeys)) {
-                        continue; // Already updated in Pass 1
-                    }
+                if ($amt <= 0) continue;
 
-                    $payroll = \DB::table('employee_payroll')
-                        ->where('p_id', $pId)
-                        ->where('paymonth', $period['month'])
-                        ->where('year', $period['year'])
-                        ->first();
+                $payroll = \DB::table('employee_payroll')
+                    ->where('p_id', $pId)
+                    ->where('paymonth', $month)
+                    ->where('year', $year)
+                    ->first();
 
-                    if (!$payroll) {
-                        // Create a minimal stub row; is_frozen=0, salary carries over later
-                        // We set salary_id to the bill's because there is no monthly salary yet.
-                        \DB::table('employee_payroll')->insert([
-                            'p_id'           => $pId,
-                            'paymonth'       => $period['month'],
-                            'year'           => $period['year'],
-                            'salary_id'      => $bill->salary_id,
-                            'is_frozen'      => 0,
-                            'created_at'     => $now,
-                            'updated_at'     => $now,
-                        ]);
-                        $payroll = \DB::table('employee_payroll')
-                            ->where('p_id', $pId)
-                            ->where('paymonth', $period['month'])
-                            ->where('year', $period['year'])
-                            ->first();
-                        
-                        $this->applyRecalculation($payroll, $destColumn, $amt, $isFA, $isBonus);
-                        $periodCreated++;
+                if ($payroll) {
+                    $this->applyRecalculation($payroll, $destColumn, $amt, $isFA, $isBonus);
+                    if ($payroll->is_frozen) {
+                        $frozenUpdated++;
                     } else {
-                        // exists but not frozen — update the target column only
-                        $this->applyRecalculation($payroll, $destColumn, $amt, $isFA, $isBonus);
-                        $periodUpdated++;
+                        $unfrozenUpdated++;
                     }
                 }
             }
 
-            $empCount = count($pIds);
+            $bill->update(['status' => 'Allocated']);
+
             return response()->json([
                 'success' => true,
-                'message' => "Applied to Salary Deductions! "
-                           . "{$frozenUpdated} frozen record(s) updated (visible now). "
-                           . "{$periodUpdated} bill-period record(s) updated, {$periodCreated} new rows created. ",
+                'message' => "Applied to Salary Deductions! explicitly updated {$frozenUpdated} frozen bill(s) and {$unfrozenUpdated} active processing bill(s).",
             ]);
         });
+    }
+
+    public function getFrozenBillsMapping(Request $request)
+    {
+        try {
+            $request->validate(['salary_id' => 'required|string']);
+
+            $bill = \App\Models\EmployeePayBill::with('details')
+                        ->where('salary_id', $request->salary_id)
+                        ->firstOrFail();
+
+            $pIds = $bill->details->pluck('p_id')->toArray();
+
+            $empDetails = \DB::table('project_employee')
+                ->whereIn('p_id', $pIds)
+                ->select('p_id', 'name')
+                ->get()
+                ->keyBy('p_id');
+
+            $frozenRecords = \DB::table('employee_payroll')
+                ->whereIn('p_id', $pIds)
+                ->where('is_frozen', 1)
+                ->select('p_id', 'paymonth', 'year')
+                ->orderBy('year', 'asc')
+                ->get()
+                ->groupBy('p_id');
+                
+            $monthOrder = [
+                'January'=>1,'February'=>2,'March'=>3,'April'=>4,
+                'May'=>5,'June'=>6,'July'=>7,'August'=>8,
+                'September'=>9,'October'=>10,'November'=>11,'December'=>12
+            ];
+
+            $mappingData = [];
+            foreach ($bill->details as $detail) {
+                $pId = $detail->p_id;
+                $emp = $empDetails->get($pId);
+                
+                $empFrozen = $frozenRecords->get($pId) ?? collect();
+                // Sort chronologically
+                $empFrozen = $empFrozen->sortBy(function($item) use ($monthOrder) {
+                    return ($item->year * 100) + ($monthOrder[$item->paymonth] ?? 0);
+                });
+                
+                $frozenOptions = [];
+                foreach ($empFrozen as $frz) {
+                    $frozenOptions[] = [
+                        'paymonth' => $frz->paymonth,
+                        'year' => $frz->year,
+                        'label' => $frz->paymonth . ' ' . $frz->year
+                    ];
+                }
+
+                $mappingData[] = [
+                    'p_id' => $pId,
+                    'name' => $emp?->name ?? 'Unknown Employee',
+                    'amount' => (float)$detail->adjusted_amount,
+                    'frozen_bills' => array_values($frozenOptions)
+                ];
+            }
+
+            return response()->json([
+                'success' => true,
+                'bill_month' => $bill->month,
+                'bill_year' => $bill->year,
+                'data' => $mappingData
+            ]);
+            
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     }
 
     public function viewBill(Request $request)
@@ -933,7 +960,7 @@ class PayItemMasterController extends Controller
                 foreach ($targetPeriods as $period) {
                     $payroll = $empRecords->where('paymonth', $period['month'])->where('year', $period['year'])->first();
                     if ($payroll) {
-                        $this->applyRecalculation($payroll, $destColumn, round($perMonthAmt, 2), $isFA, $isBonus, $draftBill->salary_id);
+                        $this->applyRecalculation($payroll, $destColumn, round($perMonthAmt, 2), $isFA, $isBonus);
                     }
                 }
             }
@@ -1186,7 +1213,7 @@ class PayItemMasterController extends Controller
                 foreach ($targetPeriods as $period) {
                     $payroll = $empRecords->where('paymonth', $period['month'])->where('year', $period['year'])->first();
                     if ($payroll) {
-                        $this->applyRecalculation($payroll, $destColumn, round($perMonthAmt, 2), $isFA, $isBonus, $request->salary_id);
+                        $this->applyRecalculation($payroll, $destColumn, round($perMonthAmt, 2), $isFA, $isBonus);
                     }
                 }
             }
@@ -1375,17 +1402,16 @@ class PayItemMasterController extends Controller
     private function resolveDestinationColumn($payItem)
     {
         $columnMap = [
-            'pf tax'                      => 'pf',
             'professional tax'            => 'professional_tax',
-            'pt'                          => 'professional_tax',
+            'prof tax'                    => 'professional_tax',
+            'pf tax'                      => 'professional_tax',
+            'p.tax'                       => 'professional_tax',
             'festival allowance'          => 'festival_allowance',
             'festival'                    => 'festival_allowance',
             'bonus'                       => 'bonus',
             'bonus allowance'             => 'bonus',
             'salary bonus'                => 'bonus',
             'incentive'                   => 'bonus',
-            'prof tax'                    => 'professional_tax',
-            'p.tax'                       => 'professional_tax',
             'tds'                         => 'tds',
             'tds 192 b'                   => 'tds_192_b',
             'tds 192b'                    => 'tds_192_b',
@@ -1400,7 +1426,9 @@ class PayItemMasterController extends Controller
             'epf'                         => 'epf_employers_share',
             'edli contribution and admin' => 'edli_charges',
             'edli'                        => 'edli_charges',
+            // Put 'pf' carefully at the end so it doesn't match 'epf' or 'pf tax' by mistake if partial matching loops over it
             'pf'                          => 'pf',
+            'provident fund'              => 'pf',
             'employer contribution'       => 'employer_contribution',
             'arrear'                      => 'other_allowance',
             'arrears'                     => 'other_allowance',
@@ -1481,7 +1509,7 @@ class PayItemMasterController extends Controller
             ->where('p_id', $pId)->where('paymonth', $month)->where('year', $year)->first();
 
         if ($payroll) {
-            $this->applyRecalculation($payroll, $destColumn, $amt, $isFA, $isBonus, $payroll->salary_id);
+            $this->applyRecalculation($payroll, $destColumn, $amt, $isFA, $isBonus);
         }
     }
 }

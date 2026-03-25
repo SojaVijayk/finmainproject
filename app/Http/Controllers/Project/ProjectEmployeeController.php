@@ -253,14 +253,15 @@ class ProjectEmployeeController extends Controller
       $employee = ProjectEmployee::findOrFail($id);
       $p_id = $employee->p_id;
 
-      $allowedFields = ['department', 'employment_type', 'role', 'pay_type', 'consolidated_pay', 'basic_pay', 'da', 'hra', 'start_date', 'end_date', 'status', 'pf_available', 'pf_uan'];
+      $allowedFields = ['department', 'employment_type', 'role', 'pay_type', 'consolidated_pay', 'basic_pay', 'da', 'hra', 'include_hra', 'start_date', 'end_date', 'status', 'pf_available', 'pf_uan'];
       $data = $request->only($allowedFields);
 
-      // Handle checkbox for PF Available
+      // Handle checkbox for PF Available & Include HRA
       $data['pf_available'] = $request->has('pf_available') && $request->pf_available !== 'false' ? 1 : 0;
       if ($data['pf_available'] == 0) {
           $data['pf_uan'] = null;
       }
+      $data['include_hra'] = $request->has('include_hra') && $request->include_hra !== 'false' ? 1 : 0;
 
       $serviceId = $request->id ?? $request->service_id;
       $isNewRecord = ($request->has('new_record') && $request->new_record == '1');
@@ -364,6 +365,13 @@ class ProjectEmployeeController extends Controller
                   'esi_employer' => 0, 'esi_employer_value' => 0, 'esi_employer_type' => 'amount', 'esi_employer_amount' => 0,
                   'festival_allowance' => 0, 'festival_allowance_value' => 0, 'festival_allowance_type' => 'amount', 'festival_allowance_amount' => 0,
                   'bonus' => 0, 'bonus_value' => 0, 'bonus_type' => 'amount', 'bonus_amount' => 0,
+                  'medisep' => 0, 'medisep_value' => 0, 'medisep_type' => 'amount', 'medisep_amount' => 0,
+                  'gpf' => 0, 'gpf_value' => 0, 'gpf_type' => 'amount', 'gpf_amount' => 0,
+                  'sli1' => 0, 'sli1_value' => 0, 'sli1_type' => 'amount', 'sli1_amount' => 0,
+                  'sli2' => 0, 'sli2_value' => 0, 'sli2_type' => 'amount', 'sli2_amount' => 0,
+                  'sli3' => 0, 'sli3_value' => 0, 'sli3_type' => 'amount', 'sli3_amount' => 0,
+                  'gis' => 0, 'gis_value' => 0, 'gis_type' => 'amount', 'gis_amount' => 0,
+                  'gpais' => 0, 'gpais_value' => 0, 'gpais_type' => 'amount', 'gpais_amount' => 0,
                   'other' => 0, 'other_value' => 0, 'other_type' => 'amount', 'other_amount' => 0,
               ];
 
@@ -371,7 +379,9 @@ class ProjectEmployeeController extends Controller
                   'TDS' => 'tds', 'EPF' => 'epf', 'PF' => 'pf', 'LIC' => 'lic', 'EDLI' => 'edli',
                   'TDS 192 B' => 'tds_192_b', 'TDS 194 J' => 'tds_194_j', 
                   'PROFESSIONAL TAX' => 'professional_tax', 'PROF TAX' => 'professional_tax', 'PF TAX' => 'professional_tax', 'PROF. TAX' => 'professional_tax',
-                  'ESI EMPLOYER' => 'esi_employer', 'FESTIVAL ALLOWANCE' => 'festival_allowance', 'BONUS' => 'bonus', 'OTHER' => 'other'
+                  'ESI EMPLOYER' => 'esi_employer', 'FESTIVAL ALLOWANCE' => 'festival_allowance', 'BONUS' => 'bonus', 
+                  'MEDISEP' => 'medisep', 'GPF' => 'gpf', 'SLI1' => 'sli1', 'SLI2' => 'sli2', 'SLI3' => 'sli3', 'GIS' => 'gis', 'GPAIS' => 'gpais',
+                  'OTHER' => 'other'
               ];
 
               foreach ($deductionsArray as $ded) {
@@ -492,7 +502,14 @@ class ProjectEmployeeController extends Controller
       $basePay = 0;
       $activeService = Service::where('p_id', $p_id)->where('status', 1)->first();
       if ($activeService) {
-          $basePay = $activeService->consolidated_pay ?? 0;
+          if (strtolower($activeService->employment_type) === 'deputation') {
+              $basePay = ($activeService->basic_pay ?? 0) + ($activeService->da ?? 0);
+              if ($activeService->include_hra) {
+                  $basePay += ($activeService->hra ?? 0);
+              }
+          } else {
+              $basePay = $activeService->consolidated_pay ?? 0;
+          }
       }
 
       // Calculate amounts

@@ -710,6 +710,7 @@ Route::group(['middleware' => 'auth'], function () {
       Route::get('/pay-item-master/statement', [PayItemMasterController::class, 'payItemStatement'])->name('pay-item-master.statement');
       Route::get('/pay-item-master/view-bill', [PayItemMasterController::class, 'viewBill'])->name('pay-item-master.view-bill');
       Route::post('/pay-item-master/apply-to-deductions', [PayItemMasterController::class, 'applyToDeductions'])->name('pay-item-master.apply-to-deductions');
+      Route::get('/pay-item-master/get-frozen-bills-mapping', [PayItemMasterController::class, 'getFrozenBillsMapping'])->name('pay-item-master.get-frozen-bills-mapping');
       Route::get('/pay-item-master/{project_id?}', [PayItemMasterController::class, 'index'])->name('pay-item-master.index');
 
       // Requirements
@@ -1358,5 +1359,6 @@ Route::prefix('pms/salary-management')->name('pms.salary-management.')->middlewa
     Route::post('/store/{project_id?}', [App\Http\Controllers\Project\SalaryManagementController::class, 'store'])->name('store');
     Route::get('/salary-statement/{project_id?}', [App\Http\Controllers\Project\SalaryManagementController::class, 'statement'])->name('statement');
     Route::get('/fetch-batches/{project_id?}', [App\Http\Controllers\Project\SalaryManagementController::class, 'fetchExistingBatches'])->name('fetch-batches');
+    Route::get('/resume-edit/{project_id?}', [App\Http\Controllers\Project\SalaryManagementController::class, 'resumeEdit'])->name('resume-edit');
     Route::get('/{project_id?}', [App\Http\Controllers\Project\SalaryManagementController::class, 'index'])->name('index');
 });

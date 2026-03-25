@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Project;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Barryvdh\DomPDF\Facade\Pdf;
 
 class DeductionMasterController extends Controller
@@ -11,6 +12,10 @@ class DeductionMasterController extends Controller
     public function index($project_id = null)
     {
         $pageConfigs = ['myLayout' => 'horizontal'];
+        
+        if (!$project_id || !is_numeric($project_id)) {
+            $project_id = 1;
+        }
         
         // Fetch ALL frozen payroll records across all months/years/types for this specific project
         $frozenPayrolls = \DB::table('employee_payroll')
@@ -42,11 +47,19 @@ class DeductionMasterController extends Controller
     {
         $pageConfigs = ['myLayout' => 'horizontal'];
 
+        if (!$project_id || !is_numeric($project_id)) {
+            $project_id = 1;
+        }
+
         // Fetch ALL frozen payroll records, joining with service, project_employee, and deduction_masters
         $frozenPayrolls = \DB::table('employee_payroll')
             ->join('project_employee', 'project_employee.p_id', '=', 'employee_payroll.p_id')
             ->leftJoin('designations', 'designations.id', '=', 'project_employee.designation_id')
-            ->leftJoin('service', 'service.p_id', '=', 'employee_payroll.p_id')
+            ->leftJoin('service', function($join) {
+                // Join only the most recent service record per employee to prevent duplicate rows
+                $join->on('service.p_id', '=', 'employee_payroll.p_id')
+                     ->whereRaw('service.id = (SELECT MAX(s2.id) FROM service s2 WHERE s2.p_id = employee_payroll.p_id)');
+            })
             ->leftJoin('deduction_masters', 'deduction_masters.p_id', '=', 'employee_payroll.p_id');
 
         if ($project_id) {
@@ -69,6 +82,10 @@ class DeductionMasterController extends Controller
 
         $frozenPayrolls = $frozenPayrolls->select(
                 'employee_payroll.*',
+                'employee_payroll.gross_salary as frozen_gross_salary',
+                'employee_payroll.total_working_days as frozen_total_working_days',
+                'employee_payroll.days_worked as frozen_days_worked',
+                'employee_payroll.other_allowance as frozen_arrear',
                 'employee_payroll.professional_tax as payroll_professional_tax',
                 'employee_payroll.festival_allowance as payroll_festival_allowance',
                 'employee_payroll.bonus as payroll_bonus',
@@ -79,8 +96,8 @@ class DeductionMasterController extends Controller
                 'project_employee.branch',
                 'service.role',
                 'service.employment_type',
-                'service.basic_pay',
-                'service.da',
+                'service.basic_pay as service_basic_pay',
+                'service.da as service_da',
                 'deduction_masters.tds as dm_tds_flag',
                 'deduction_masters.tds_value as dm_tds_value',
                 'deduction_masters.tds_type as dm_tds_type',
@@ -158,12 +175,103 @@ class DeductionMasterController extends Controller
                 'deduction_masters.gpais_type as dm_gpais_type',
                 'deduction_masters.gpais_amount as dm_gpais_amount'
             )
-            // Ensure we use the latest service record for each employee to prevent duplicates
-            ->whereRaw('service.id = (SELECT MAX(id) FROM service WHERE service.p_id = employee_payroll.p_id)')
             ->orderBy('project_employee.name', 'asc')
             ->orderBy('employee_payroll.year', 'desc')
             ->orderBy('employee_payroll.paymonth', 'desc')
             ->get();
+
+        // --- AUTO-FETCH PAY ITEM BILL AMOUNTS ---
+        // For each frozen record, we check if there is a Pay Item Bill (Saved, In Progress,
+        // or Finalized) that covers this employee. We take the FULL bill amount (adjusted_amount),
+        // which is the total amount for the entire period (e.g. 4500 for Jan-June), NOT a per-month split.
+        // Priority: Finalized > Saved > In Progress (so a finalized bill always wins).
+        $monthOrder = [
+            'January'=>1,'February'=>2,'March'=>3,'April'=>4,'May'=>5,'June'=>6,
+            'July'=>7,'August'=>8,'September'=>9,'October'=>10,'November'=>11,'December'=>12
+        ];
+
+        // Status priority map: higher = better
+        $statusPriority = ['In Progress' => 1, 'Saved' => 2, 'Finalized' => 3];
+
+        foreach ($frozenPayrolls as $payroll) {
+            $pId = $payroll->p_id;
+            $m   = $payroll->paymonth;
+            $y   = $payroll->year;
+            $val = ($y * 100) + ($monthOrder[$m] ?? 0);
+
+            // Fetch ALL non-draft bill details for this employee from any bill that overlaps
+            // this payroll month. Accept Saved, In Progress, and Finalized bills.
+            // Order by bill ID desc so newer bills replace older ones of the same priority.
+            $billDetails = \DB::table('employee_pay_bill_details')
+                ->join('employee_pay_bills', 'employee_pay_bills.id', '=', 'employee_pay_bill_details.employee_pay_bill_id')
+                ->join('pay_items', 'pay_items.id', '=', 'employee_pay_bills.pay_item_id')
+                ->where('employee_pay_bill_details.p_id', (string)$pId)
+                ->whereIn('employee_pay_bills.status', ['Saved', 'In Progress', 'Finalized'])
+                ->select(
+                    'employee_pay_bills.id as bill_id',
+                    'employee_pay_bill_details.adjusted_amount',
+                    'pay_items.name',
+                    'employee_pay_bills.month',
+                    'employee_pay_bills.year',
+                    'employee_pay_bills.to_month',
+                    'employee_pay_bills.to_year',
+                    'employee_pay_bills.status'
+                )
+                ->orderBy('employee_pay_bills.id', 'desc')
+                ->get();
+
+            // Collect best match per pay item type keyed by normalised category
+            $bestMatches = []; // category => ['priority'=>int, 'bill_id'=>int, 'amt'=>float]
+
+            foreach ($billDetails as $bd) {
+                // Determine the bill's coverage period
+                $startVal = ($bd->year * 100) + ($monthOrder[$bd->month] ?? 0);
+                $endVal   = $startVal;
+                if ($bd->to_month && $bd->to_year) {
+                    $endVal = ($bd->to_year * 100) + ($monthOrder[$bd->to_month] ?? 0);
+                }
+
+                // The payroll month must fall within the bill's coverage window
+                if ($val < $startVal || $val > $endVal) {
+                    continue;
+                }
+
+                $normalizedName = strtolower(trim($bd->name));
+                $amt  = (float)$bd->adjusted_amount;
+                $prio = $statusPriority[$bd->status] ?? 0;
+                $bId  = (int)$bd->bill_id;
+
+                // Categorise the pay item
+                if (str_contains($normalizedName, 'prof') || str_contains($normalizedName, 'p.tax') || str_contains($normalizedName, 'professional') || str_contains($normalizedName, 'pf tax')) {
+                    $cat = 'prof_tax';
+                } elseif (str_contains($normalizedName, 'festival')) {
+                    $cat = 'festival';
+                } elseif (str_contains($normalizedName, 'bonus')) {
+                    $cat = 'bonus';
+                } else {
+                    continue; // Unknown category, skip
+                }
+
+                // Keep the best match: higher priority OR (same priority AND newer bill ID)
+                $currentPrio  = $bestMatches[$cat]['priority'] ?? -1;
+                $currentBillId = $bestMatches[$cat]['bill_id'] ?? -1;
+                
+                if ($prio > $currentPrio || ($prio === $currentPrio && $bId > $currentBillId)) {
+                    $bestMatches[$cat] = ['priority' => $prio, 'bill_id' => $bId, 'amt' => $amt];
+                }
+            }
+
+            // Apply the best-matched amounts to the payroll object
+            if (isset($bestMatches['prof_tax'])) {
+                $payroll->payroll_professional_tax = $bestMatches['prof_tax']['amt'];
+            }
+            if (isset($bestMatches['festival'])) {
+                $payroll->payroll_festival_allowance = $bestMatches['festival']['amt'];
+            }
+            if (isset($bestMatches['bonus'])) {
+                $payroll->payroll_bonus = $bestMatches['bonus']['amt'];
+            }
+        }
 
         return view('content.projects.deduction-master.select-employees', compact(
             'frozenPayrolls', 
@@ -220,14 +328,12 @@ class DeductionMasterController extends Controller
 
             $netSalary = 0;
             if ($payroll) {
-                $grossSalary = (float)($payroll->gross_salary ?? 0);
-                $totalWorkingDays = (float)($payroll->total_working_days ?? 0);
-                $daysWorked = (float)($payroll->days_worked ?? 0);
-                $arrear = (float)($payroll->other_allowance ?? 0);
-
-                $proratedSalary = ($totalWorkingDays > 0) ? ($grossSalary / $totalWorkingDays) * $daysWorked : $grossSalary;
-                // Festival Allowance and Bonus are earnings, so they add to calculated Gross Salary
-                $computedGross = $proratedSalary + $arrear + $festivalAllowance + $bonus;
+                // Use the frozen net_salary as the base — this already includes the prorated salary,
+                // EPF employer share, EDLI charges, arrears, and any other components applied at freeze time.
+                $frozenNetSalary = (float)($payroll->net_salary ?? 0);
+                
+                // Festival Allowance and Bonus are earnings that add to the base
+                $computedGross = $frozenNetSalary + $festivalAllowance + $bonus;
                 $netSalary = $computedGross - $totalDeductions;
             }
 

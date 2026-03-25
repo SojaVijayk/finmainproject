@@ -56,6 +56,9 @@ class Payroll extends Model
         'pl_days',
         'other_leave_days',
         'is_frozen',
+        'current_step',
+        'admin_charge_percent',
+        'gst_percent',
     ];
 
     public function employee()

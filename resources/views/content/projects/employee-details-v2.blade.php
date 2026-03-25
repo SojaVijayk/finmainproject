@@ -99,15 +99,12 @@
                      $activeServiceData['dynamic_deductions'] = $employee->dynamicDeductions ?? [];
                  }
               @endphp
-              <button class="btn btn-sm btn-primary btn-populate-service" 
-                  data-bs-toggle="modal" data-bs-target="#editServiceModal" 
-                  data-service="{{ json_encode($activeServiceData, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) }}" 
-                  data-new="false">
-                <i class="ti ti-edit me-1"></i> Edit Current Service
+              <button class="btn btn-sm btn-primary btn-populate-service" data-bs-toggle="modal" data-bs-target="#editServiceModal" data-service="{{ json_encode(array_merge($employee->service->toArray(), ['dynamic_deductions' => $employee->dynamicDeductions]), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) }}" data-new="false">
+                <i class="ti ti-edit me-1"></i> Edit Service
               </button>
           @else
               {{-- No Active Service: Show Add --}}
-              <button class="btn btn-sm btn-success btn-populate-service" data-bs-toggle="modal" data-bs-target="#editServiceModal" data-service="{}" data-new="true">
+              <button class="btn btn-sm btn-success btn-populate-service" data-bs-toggle="modal" data-bs-target="#editServiceModal" data-service="{{ json_encode(['dynamic_deductions' => $employee->dynamicDeductions]) }}" data-new="true">
                 <i class="ti ti-plus me-1"></i> Add New Service
               </button>
           @endif
@@ -272,7 +269,7 @@
                   {{-- Edit Button --}}
                   <button class="btn btn-sm btn-icon btn-label-primary btn-populate-service" title="Edit this record" 
                       data-bs-toggle="modal" data-bs-target="#editServiceModal" 
-                      data-service="{{ json_encode($hist, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) }}" 
+                      data-service="{{ json_encode(array_merge($hist->toArray(), ['dynamic_deductions' => $employee->dynamicDeductions]), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) }}" 
                       data-new="false" 
                       data-hide-toggle="true">
                     <i class="ti ti-edit"></i>
@@ -424,6 +421,12 @@
                 <label class="form-label" for="edit_hra">HRA (House Rent Allowance)</label>
                 <input type="number" step="0.01" id="edit_hra" name="hra" class="form-control" placeholder="HRA" />
               </div>
+              <div class="col-12 mt-2">
+                <div class="form-check form-switch text-start ms-1">
+                  <input class="form-check-input" type="checkbox" id="edit_include_hra" name="include_hra">
+                  <label class="form-check-label fw-semibold" for="edit_include_hra">Include HRA for % Deductions</label>
+                </div>
+              </div>
             </div>
           </div>
           
@@ -559,14 +562,18 @@ $(function() {
             if (type === 'percent_gross') {
                 // Gross is Consolidated Pay by default
                 let employmentType = $('#edit_employment_type').val() || '';
-                let deductionName = row.find('.ded-name').val() || '';
-                let isPF = deductionName.toUpperCase() === 'PF';
                 
-                if (employmentType.toLowerCase() === 'deputation' && isPF) {
-                    // For PF calculation of Deputation employees -> Only DA + Basic Salary, excluding HRA
+                if (employmentType.trim().toLowerCase() === 'deputation') {
+                    // For calculation of Deputation employees -> Only DA + Basic Salary (+ HRA optional)
                     let basic = parseFloat($('#edit_basic_pay').val()) || 0;
                     let da = parseFloat($('#edit_da').val()) || 0;
+                    let hra = parseFloat($('#edit_hra').val()) || 0;
+                    let includeHra = $('#edit_include_hra').is(':checked');
+                    
                     baseAmt = basic + da;
+                    if (includeHra) {
+                        baseAmt += hra;
+                    }
                 } else {
                     baseAmt = parseFloat($('#edit_consolidated_pay').val()) || 0;
                 }
@@ -671,7 +678,7 @@ $(function() {
         const da = parseFloat($('#edit_da').val()) || 0;
         const hra = parseFloat($('#edit_hra').val()) || 0;
         const total = bp + da + hra;
-        $('#edit_consolidated_pay').val(total.toFixed(2));
+        $('#edit_consolidated_pay').val(total.toFixed(2)).trigger('input');
     }
 
     function toggleDeputationFields(employmentType) {
@@ -696,6 +703,14 @@ $(function() {
 
     $(document).on('change', '#edit_employment_type', function() {
         toggleDeputationFields($(this).val());
+    });
+
+    $(document).on('change', '#edit_include_hra', function() {
+        $('#dynamic_deductions_table tbody tr').each(function() {
+            if ($(this).find('.calc-type').val() === 'percent_gross') {
+                calculateRowDeduction($(this));
+            }
+        });
     });
 
     // PF Details Toggle
@@ -860,6 +875,7 @@ $(function() {
         $('#edit_basic_pay').val('');
         $('#edit_da').val('');
         $('#edit_hra').val('');
+        $('#edit_include_hra').prop('checked', false);
         $('#edit_pf_available').prop('checked', false);
         $('#edit_pf_uan').val('');
         $('#pf_uan_container').hide();
@@ -883,6 +899,7 @@ $(function() {
         $('#edit_basic_pay').val(data.basic_pay || '');
         $('#edit_da').val(data.da || '');
         $('#edit_hra').val(data.hra || '');
+        $('#edit_include_hra').prop('checked', data.include_hra == 1);
         $('#edit_start_date').val(data.start_date || new Date().toISOString().split('T')[0]); // Default to today for new
         $('#edit_end_date').val(data.end_date || '');
 

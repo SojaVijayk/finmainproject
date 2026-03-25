@@ -34,39 +34,113 @@ class SalaryManagementController extends Controller
 
     public function fetchExistingBatches(Request $request, $project_id = null)
     {
-        $month = $request->month;
-        $year = $request->year;
-        $employmentTypeId = $request->employment_type;
         $project_id = $project_id ?? $request->project_id ?? 1;
-
-        // Resolve Employment Type Name
-        $employmentType = $employmentTypeId;
-        if (is_numeric($employmentTypeId)) {
-            $et = \App\Models\EmploymentType::find($employmentTypeId);
-            $employmentType = $et ? $et->employment_type : $employmentTypeId;
-        }
-
-        if (!$month || !$year || !$employmentType) {
-            return response()->json(['success' => false, 'message' => 'Missing filters']);
-        }
 
         $batches = \DB::table('employee_payroll')
             ->join('project_employee', 'project_employee.p_id', '=', 'employee_payroll.p_id')
             ->join('service', 'service.p_id', '=', 'employee_payroll.p_id')
-            ->where('employee_payroll.paymonth', $month)
-            ->where('employee_payroll.year', $year)
             ->where('project_employee.project_id', $project_id)
-            ->where('service.employment_type', $employmentType)
+            ->where(function ($q) {
+                // Ensure we only join the latest active service to prevent duplicate batch rows
+                $q->whereRaw('service.id = (SELECT MAX(id) FROM service s2 WHERE s2.p_id = employee_payroll.p_id AND s2.status = 1)')
+                  ->orWhereRaw('service.id = (SELECT MAX(id) FROM service s2 WHERE s2.p_id = employee_payroll.p_id)');
+            })
             ->select(
+                'employee_payroll.paymonth',
+                'employee_payroll.year',
+                'service.employment_type',
                 DB::raw("COALESCE(NULLIF(employee_payroll.salary_id, ''), 'Unnamed Batch') as salary_id"),
                 \DB::raw('COUNT(employee_payroll.p_id) as employee_count'),
                 \DB::raw('SUM(employee_payroll.net_salary) as total_net'),
                 \DB::raw('MAX(employee_payroll.is_frozen) as is_frozen')
             )
-            ->groupBy('employee_payroll.salary_id')
+            ->groupBy('employee_payroll.year', 'employee_payroll.paymonth', 'service.employment_type', 'employee_payroll.salary_id')
+            ->orderBy('employee_payroll.year', 'desc')
+            ->orderByRaw("FIELD(employee_payroll.paymonth,'December','November','October','September','August','July','June','May','April','March','February','January')")
             ->get();
 
         return response()->json(['success' => true, 'batches' => $batches]);
+    }
+
+    public function resumeEdit(Request $request, $project_id = null)
+    {
+        $project_id = $project_id ?? $request->project_id ?? session('payroll_project_id') ?? 1;
+        $salaryId   = $request->salary_id;
+
+        if (empty($salaryId)) {
+            return redirect()->route('pms.salary-management.index', $project_id)
+                ->with('error', 'No Salary ID provided to resume.');
+        }
+
+        // Load ALL payroll records for this salary_id in this project
+        $payrolls = DB::table('employee_payroll')
+            ->join('project_employee', 'project_employee.p_id', '=', 'employee_payroll.p_id')
+            ->where('project_employee.project_id', $project_id)
+            ->where('employee_payroll.salary_id', $salaryId)
+            ->select(
+                'employee_payroll.p_id',
+                'employee_payroll.paymonth',
+                'employee_payroll.year',
+                'employee_payroll.salary_id',
+                'employee_payroll.current_step'
+            )
+            ->get();
+
+        if ($payrolls->isEmpty()) {
+            return redirect()->route('pms.salary-management.index', $project_id)
+                ->with('error', 'Batch not found or already frozen. Frozen bills cannot be edited.');
+        }
+
+        $firstRecord  = $payrolls->first();
+        $month        = $firstRecord->paymonth;
+        $year         = $firstRecord->year;
+        $selectedPIds = $payrolls->pluck('p_id')->toArray();
+
+        // Resolve employment_type for these employees (use any one, they should share the same type per batch)
+        $serviceRecord = DB::table('service')
+            ->whereIn('p_id', $selectedPIds)
+            ->orderBy('id', 'desc')
+            ->first(['employment_type']);
+
+        $employmentType = $serviceRecord ? $serviceRecord->employment_type : null;
+
+        // Resolve employment_type ID for the select dropdown
+        $etRecord = \App\Models\EmploymentType::where('employment_type', $employmentType)->first();
+        $employmentTypeId = $etRecord ? $etRecord->id : $employmentType;
+
+        // Write session context — this mirrors what selectEmployees->store() normally writes
+        session([
+            'payroll_month'              => $month,
+            'payroll_year'               => $year,
+            'payroll_employment_type'    => $employmentType,
+            'payroll_employment_type_id' => $employmentTypeId,
+            'payroll_project_id'         => $project_id,
+            'payroll_default_salary_id'  => $salaryId,
+        ]);
+
+        $currentStep = $firstRecord->current_step ?? 1;
+
+        if ($currentStep <= 2) {
+            // Pre-populate pending_data with the selected employees for Step 2
+            session(['payroll_pending_data' => [
+                'selected_employees' => $selectedPIds,
+                'p_id'               => $selectedPIds,
+            ]]);
+        } else {
+            // For Step 3/4, clear session data to force the controller to read everything from Database
+            session()->forget('payroll_pending_data');
+        }
+        
+        \Log::info("Resume Edit - Salary ID: $salaryId, Current Step: $currentStep, Session cleared: " . ($currentStep > 2 ? 'Yes' : 'No'));
+
+        if ($currentStep == 3) {
+            return redirect()->route('pms.salary-management.calculation', $project_id);
+        } elseif ($currentStep == 4) {
+            return redirect()->route('pms.salary-management.summary', $project_id);
+        }
+
+        // Redirect to Step 2 so user can see the employee list pre-selected
+        return redirect()->route('pms.salary-management.select-employees', $project_id);
     }
 
     public function selectEmployees(Request $request, $project_id = null)
@@ -385,6 +459,8 @@ class SalaryManagementController extends Controller
 
         $pendingPIds = isset($pendingData['p_id']) ? array_map('strval', (array)$pendingData['p_id']) : (isset($pendingData['selected_employees']) ? array_map('strval', (array)$pendingData['selected_employees']) : []);
 
+        \Log::info("Calculation Method Hit - Month: $month, Year: $year, PendingData Count: " . count($pendingData) . ", Payrolls Count: " . $payrolls->count());
+
         foreach ($employees as $employee) {
             // Default initialization
             $employee->is_frozen = 0;
@@ -407,6 +483,8 @@ class SalaryManagementController extends Controller
             // Check session first for "Back" button persistence
             $sessionIdx = array_search((string)$employee->p_id, $pendingPIds);
             
+            \Log::info("Calculation - Employee Loop: " . $employee->p_id . ", SessionIdx: " . ($sessionIdx !== false ? $sessionIdx : 'false') . ", DB Has: " . ($payrolls->has($employee->p_id) ? 'true' : 'false'));
+
             if ($sessionIdx !== false) {
                 $employee->is_frozen = 0; // If it's in session pending, it's not frozen yet
                 $employee->salary_id = $pendingData['salary_id'][$sessionIdx] ?? $defaultSalaryId;
@@ -518,11 +596,19 @@ class SalaryManagementController extends Controller
             ->whereIn('p_id', $p_ids)
             ->where('paymonth', $month)
             ->where('year', $year)
-            ->select('p_id', 'is_frozen')
+            ->select('p_id', 'is_frozen', 'admin_charge_percent', 'gst_percent')
             ->get()
             ->keyBy('p_id');
 
         $hasProcessedRecords = $payrolls->count() > 0;
+
+        $savedAdminCharge = 7.5;
+        $savedGstCharge = 18.0;
+        if ($hasProcessedRecords) {
+            $firstPayroll = $payrolls->first();
+            if ($firstPayroll->admin_charge_percent !== null) $savedAdminCharge = (float)$firstPayroll->admin_charge_percent;
+            if ($firstPayroll->gst_percent !== null) $savedGstCharge = (float)$firstPayroll->gst_percent;
+        }
 
         $summaryData = [];
         foreach ($p_ids as $index => $p_id) {
@@ -623,7 +709,7 @@ class SalaryManagementController extends Controller
             ];
         }
 
-        return view('content.projects.salary-management.summary', compact('summaryData', 'month', 'year', 'employmentType', 'employmentTypeId', 'pageConfigs', 'project_id', 'actualDaysInMonth', 'hasProcessedRecords'));
+        return view('content.projects.salary-management.summary', compact('summaryData', 'month', 'year', 'employmentType', 'employmentTypeId', 'pageConfigs', 'project_id', 'actualDaysInMonth', 'hasProcessedRecords', 'savedAdminCharge', 'savedGstCharge'));
     }
 
     public function store(Request $request, $project_id = null)
@@ -646,6 +732,7 @@ class SalaryManagementController extends Controller
         $employerContributions = $request->employer_contribution ?? [];
         $totalSalaries = $request->total_salary ?? [];
         $isFrozen = $request->has('freeze') && $request->freeze == '1' ? 1 : 0;
+        $isDraft = $request->has('is_draft') && $request->is_draft == '1';
         
         // Subset Processing: Only process these specific IDs
         $processPIds = $request->process_p_ids ?? $employeeIds; 
@@ -654,6 +741,7 @@ class SalaryManagementController extends Controller
         $monthEnd = \Carbon\Carbon::parse("1 $month $year")->endOfMonth();
         $monthStartStr = $monthStart->format('Y-m-d');
         $monthEndStr = $monthEnd->format('Y-m-d');
+        $actualDaysInMonth = $monthStart->daysInMonth; // Defined actualDaysInMonth to fix PHP warning
         $employmentTypeId = $request->employment_type;
 
         // Resolve Employment Type Name if it's an ID
@@ -746,31 +834,52 @@ class SalaryManagementController extends Controller
                 // User explicitly requested NO deductions to the total salary.
                 $netSalary = (float)($totalSalaries[$index] ?? 0);
 
+                // When FREEZING: apply Admin/Service Charge and GST percentages proportionally
+                // These are entered on the Summary page and reduce the employee's final net salary.
+                if ($isFrozen) {
+                    $adminChargePercent = (float)($request->admin_charge_percent ?? 0);
+                    $gstPercent         = (float)($request->gst_percent ?? 0);
+                    $totalChargePercent = $adminChargePercent + $gstPercent;
+                    if ($totalChargePercent > 0) {
+                        $netSalary = $netSalary - ($netSalary * $totalChargePercent / 100);
+                    }
+                }
+
+                $payrollData = [
+                    'salary_id' => !empty($request->salary_id[$index]) ? $request->salary_id[$index] : ($request->default_salary_id ?? session('payroll_default_salary_id')),
+                    'total_working_days' => $workingDayCount,
+                    'days_worked' => $daysWorkedCount,
+                    'cl_days' => $cl,
+                    'sl_days' => $sl,
+                    'pl_days' => $pl,
+                    'lop_days' => $lop,
+                    'other_leave_days' => $other,
+                    'gross_salary' => $baseSalary,
+                    'net_salary' => $netSalary,
+                    'pf' => $pf, 
+                    'employee_contribution' => $employee_contribution,
+                    'employer_contribution' => $employer_contribution,
+                    'epf_employers_share' => $epf_employers_share,
+                    'edli_charges' => $edli_charges,
+                    'other_allowance' => $arrear,
+                    'is_frozen' => $isFrozen,
+                    'current_step' => $isDraft ? 3 : 4,
+                ];
+
+                if ($request->has('admin_charge_percent')) {
+                    $payrollData['admin_charge_percent'] = $request->admin_charge_percent;
+                }
+                if ($request->has('gst_percent')) {
+                    $payrollData['gst_percent'] = $request->gst_percent;
+                }
+
                 \App\Models\Payroll::updateOrCreate(
                     [
                         'p_id' => $p_id,
                         'paymonth' => $month,
                         'year' => $year,
                     ],
-                    [
-                        'salary_id' => !empty($request->salary_id[$index]) ? $request->salary_id[$index] : ($request->default_salary_id ?? session('payroll_default_salary_id')),
-                        'total_working_days' => $workingDayCount,
-                        'days_worked' => $daysWorkedCount,
-                        'cl_days' => $cl,
-                        'sl_days' => $sl,
-                        'pl_days' => $pl,
-                        'lop_days' => $lop,
-                        'other_leave_days' => $other,
-                        'gross_salary' => $baseSalary,
-                        'net_salary' => $netSalary,
-                        'pf' => $pf, 
-                        'employee_contribution' => $employee_contribution,
-                        'employer_contribution' => $employer_contribution,
-                        'epf_employers_share' => $epf_employers_share,
-                        'edli_charges' => $edli_charges,
-                        'other_allowance' => $arrear, // Mapping Arrear to Other Allowance
-                        'is_frozen' => $isFrozen,
-                    ]
+                    $payrollData
                 );
             }
             DB::commit();
@@ -794,7 +903,12 @@ class SalaryManagementController extends Controller
             }
             
             $redirect = route('pms.salary-management.index', $project_id);
-            $msg = $isFrozen ? 'Payroll frozen successfully ' : 'Payroll processed successfully ';
+            
+            if ($isDraft) {
+                $msg = 'Draft saved successfully ';
+            } else {
+                $msg = $isFrozen ? 'Payroll frozen successfully ' : 'Payroll processed successfully ';
+            }
             
             if ($request->ajax()) {
                 $response = ['success' => true, 'message' => $msg . 'for ' . $month . ' ' . $year];
@@ -907,8 +1021,14 @@ class SalaryManagementController extends Controller
             ];
         }
 
+        // Determine if this batch is frozen (all records in a batch have the same frozen status)
+        $isFrozenBatch = false;
+        if ($payrolls->isNotEmpty()) {
+            $isFrozenBatch = (bool) $payrolls->first()->is_frozen;
+        }
+
         if ($request->query('format') === 'pdf') {
-            $pdf = Pdf::loadView('content.projects.salary-management.salary-statement', compact('statementData', 'month', 'year', 'pageConfigs', 'project', 'columns', 'startDateStr', 'endDateStr', 'note', 'employmentType'))
+            $pdf = Pdf::loadView('content.projects.salary-management.salary-statement', compact('statementData', 'month', 'year', 'pageConfigs', 'project', 'columns', 'startDateStr', 'endDateStr', 'note', 'employmentType', 'isFrozenBatch'))
                 ->setPaper('a4', 'landscape')
                 ->setOptions([
                     'defaultFont' => 'DejaVu Sans',
@@ -918,6 +1038,6 @@ class SalaryManagementController extends Controller
             return $pdf->stream("Salary_Statement_{$month}_{$year}.pdf");
         }
 
-        return view('content.projects.salary-management.salary-statement', compact('statementData', 'month', 'year', 'pageConfigs', 'project', 'columns', 'startDateStr', 'endDateStr', 'note', 'employmentType', 'employmentTypeId'));
+        return view('content.projects.salary-management.salary-statement', compact('statementData', 'month', 'year', 'pageConfigs', 'project', 'columns', 'startDateStr', 'endDateStr', 'note', 'employmentType', 'employmentTypeId', 'isFrozenBatch'));
     }
 }

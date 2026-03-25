@@ -129,8 +129,15 @@
             <tr>
               <th colspan="9" class="text-end align-middle fw-bold">Administrative Charge / Service Charge (%):</th>
               <th class="d-flex align-items-center justify-content-end gap-2">
-                <input type="number" id="admin_charge_percent" name="admin_charge_percent" class="form-control form-control-sm text-end" value="7.5" step="0.01" style="max-width: 80px;">
+                <input type="number" id="admin_charge_percent" name="admin_charge_percent" class="form-control form-control-sm text-end" value="{{ $savedAdminCharge }}" step="0.01" style="max-width: 80px;">
                 <span id="admin_charge_amount" class="fw-bold text-muted" style="min-width: 80px;">₹0.00</span>
+              </th>
+            </tr>
+            <tr>
+              <th colspan="9" class="text-end align-middle fw-bold">GST (%):</th>
+              <th class="d-flex align-items-center justify-content-end gap-2">
+                <input type="number" id="gst_percent" name="gst_percent" class="form-control form-control-sm text-end" value="{{ $savedGstCharge }}" step="0.01" style="max-width: 80px;">
+                <span id="gst_amount_display" class="fw-bold text-muted" style="min-width: 80px;">₹0.00</span>
               </th>
             </tr>
             <tr class="table-primary">
@@ -270,6 +277,12 @@
               <label class="form-check-label" for="col_payable">Payable Remuneration</label>
             </div>
           </div>
+          <div class="col-md-6 mb-2">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="col_gst_include" {{ (isset($pendingData['include_gst']) && $pendingData['include_gst'] == '0') ? '' : 'checked' }}>
+              <label class="form-check-label" for="col_gst_include">Include GST Deduction</label>
+            </div>
+          </div>
         </div>
       </div>
       <div class="modal-footer">
@@ -309,14 +322,19 @@ $(function() {
 
         var adminPercent = parseFloat($('#admin_charge_percent').val()) || 0;
         var adminAmount = (baseTotal * adminPercent) / 100;
-        var grandTotal = baseTotal + adminAmount;
+        
+        var gstPercent = parseFloat($('#gst_percent').val()) || 0;
+        var gstAmount = (baseTotal * gstPercent) / 100;
+
+        var grandTotal = baseTotal - adminAmount - gstAmount;
 
         $('#total_salary_sum').text('₹' + baseTotal.toFixed(2));
         $('#admin_charge_amount').text('₹' + adminAmount.toFixed(2));
+        $('#gst_amount_display').text('₹' + gstAmount.toFixed(2));
         $('#grand_total_amount').text('₹' + grandTotal.toFixed(2));
     }
 
-    $('#admin_charge_percent').on('input change', calculateGrandTotal);
+    $('#admin_charge_percent, #gst_percent').on('input change', calculateGrandTotal);
     
     // Initial call
     calculateGrandTotal();
@@ -380,11 +398,18 @@ $(function() {
         });
 
         var adminCharge = $('#admin_charge_percent').val() || 0;
+        var gstCharge = $('#gst_percent').val() || 0;
+        var includeGst = $('#col_gst_include').is(':checked') ? '1' : '0';
         var note = $('#statement_note').val() || '';
         var baseUrl = $(this).data('url');
         // Ensure we don't double up on parameters if baseUrl already has some
         var separator = baseUrl.includes('?') ? '&' : '?';
-        var fullUrl = baseUrl + separator + 'p_ids=' + selectedIds.join(',') + '&admin_charge=' + encodeURIComponent(adminCharge) + '&columns=' + encodeURIComponent(selectedColumns.join(',')) + '&note=' + encodeURIComponent(note);
+        var fullUrl = baseUrl + separator + 'p_ids=' + selectedIds.join(',') + 
+                      '&admin_charge=' + encodeURIComponent(adminCharge) + 
+                      '&gst_charge=' + encodeURIComponent(gstCharge) + 
+                      '&include_gst=' + includeGst +
+                      '&columns=' + encodeURIComponent(selectedColumns.join(',')) + 
+                      '&note=' + encodeURIComponent(note);
         
         // Hide modal
         var modalEl = document.getElementById('columnSelectionModal');

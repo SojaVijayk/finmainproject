@@ -1,7 +1,10 @@
 @extends('layouts/layoutMaster')
 
 @section('title', 'Pay Item Master')
-@section('page-style')
+@section('vendor-style')
+<link rel="stylesheet" href="{{asset('assets/vendor/libs/animate-css/animate.css')}}" />
+<link rel="stylesheet" href="{{asset('assets/vendor/libs/sweetalert2/sweetalert2.css')}}" />
+<link rel="stylesheet" href="{{asset('assets/vendor/libs/toastr/toastr.css')}}" />
 <style>
     .statement-header {
         border-bottom: 2px solid #696cff;
@@ -32,7 +35,7 @@
             <small class="text-muted">Configure pay items, types, and dynamic salary slab rules.</small>
         </div>
         <div class="d-flex gap-2">
-            <a href="{{ $project_id ? route('pms.employees.index', $project_id) : route('pms.employees.index') }}" class="btn btn-label-secondary">
+            <a href="{{ route('pms.employees.project-index', ['id' => $project_id]) }}" class="btn btn-label-secondary">
                 <i class="ti ti-arrow-left me-1 ti-xs"></i> Back
             </a>
             <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addPayItemModal">
@@ -356,32 +359,98 @@
                 <div id="existing-bills-card" class="card mb-4 shadow-none border">
                     <div class="card-header d-flex justify-content-between align-items-center border-bottom pb-2">
                         <h5 class="mb-0">Existing Pay Item Bill</h5>
-                        <span class="badge bg-label-info">Period Summary</span>
+                        <div class="d-flex align-items-center gap-2">
+                            <select id="existing-bills-filter" class="form-select form-select-sm" style="width: 160px;">
+                                <option value="all">All Items</option>
+                                <option value="pf tax">PF Tax</option>
+                                <option value="festival allowance">Festival Allowance</option>
+                                <option value="bonus">Bonus Allowance</option>
+                            </select>
+                            <span class="badge bg-label-info">Period Summary</span>
+                        </div>
                     </div>
                     <div class="card-body pt-3">
-                        <div class="table-responsive">
-                            <table class="table table-sm table-bordered table-hover mb-0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th class="text-truncate">Period &amp; Status</th>
-                                        <th class="text-truncate">Pay Item</th>
-                                        <th class="text-truncate">Id</th>
-                                        <th class="text-center">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="existing-bills-table-body">
-                                    <tr>
-                                        <td colspan="5" class="text-center py-4">
-                                            <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
-                                            <span>Fetching existing bills...</span>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                        <ul class="nav nav-tabs nav-fill mb-3 text-uppercase small fw-bold" role="tablist">
+                            <li class="nav-item">
+                                <button type="button" class="nav-link active" role="tab" data-bs-toggle="tab" data-bs-target="#nav-not-finalized">
+                                    Not Finalized
+                                    <span class="badge bg-label-warning ms-1" id="count-not-finalized">0</span>
+                                </button>
+                            </li>
+                            <li class="nav-item">
+                                <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#nav-finalized">
+                                    Finalized
+                                    <span class="badge bg-label-primary ms-1" id="count-finalized">0</span>
+                                </button>
+                            </li>
+                            <li class="nav-item">
+                                <button type="button" class="nav-link" role="tab" data-bs-toggle="tab" data-bs-target="#nav-allocated">
+                                    Allocated
+                                    <span class="badge bg-label-success ms-1" id="count-allocated">0</span>
+                                </button>
+                            </li>
+                        </ul>
+
+                        <div class="tab-content p-0 border-0">
+                            <!-- Not Finalized Tab -->
+                            <div class="tab-pane fade show active" id="nav-not-finalized" role="tabpanel">
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-bordered table-hover mb-0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th class="text-truncate">Period &amp; Status</th>
+                                                <th class="text-truncate">Pay Item</th>
+                                                <th class="text-truncate">Id</th>
+                                                <th class="text-center">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tbody-not-finalized">
+                                            <tr><td colspan="4" class="text-center py-4">Fetching existing bills...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <!-- Finalized Tab -->
+                            <div class="tab-pane fade" id="nav-finalized" role="tabpanel">
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-bordered table-hover mb-0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th class="text-truncate">Period &amp; Status</th>
+                                                <th class="text-truncate">Pay Item</th>
+                                                <th class="text-truncate">Id</th>
+                                                <th class="text-center">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tbody-finalized">
+                                            <tr><td colspan="4" class="text-center py-4">Fetching existing bills...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <!-- Allocated Tab -->
+                            <div class="tab-pane fade" id="nav-allocated" role="tabpanel">
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-bordered table-hover mb-0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th class="text-truncate">Period &amp; Status</th>
+                                                <th class="text-truncate">Pay Item</th>
+                                                <th class="text-truncate">Id</th>
+                                                <th class="text-center">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tbody-allocated">
+                                            <tr><td colspan="4" class="text-center py-4">Fetching existing bills...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
+                        
                         <div id="existing-bills-info" class="form-text mt-3 text-info d-flex align-items-center d-none">
                             <i class="ti ti-info-circle ti-xs me-2"></i> 
-                            <span>Click a Batch ID to copy it to the form.</span>
+                            <span>Click a Batch ID in Not Finalized to copy it to the form.</span>
                         </div>
                     </div>
                 </div>
@@ -626,6 +695,11 @@
 </div>
 @endsection
 
+@section('vendor-script')
+<script src="{{asset('assets/vendor/libs/sweetalert2/sweetalert2.js')}}"></script>
+<script src="{{asset('assets/vendor/libs/toastr/toastr.js')}}"></script>
+@endsection
+
 @section('page-script')
 <!-- Confirmation Modal -->
 <div class="modal fade" id="addPayBillModal" tabindex="-1" aria-hidden="true">
@@ -664,6 +738,56 @@
                 <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-success" id="btnModalSaveBill">
                     <i class="ti ti-device-floppy me-1"></i> Save & Pay Item Bill
+                </button>
+            </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Map to Frozen Bills Modal -->
+<div class="modal fade" id="mappingModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content">
+            <div class="modal-header border-bottom pb-3">
+                <h5 class="modal-title fw-bold text-primary">
+                    <i class="ti ti-calendar-stats me-2 ti-sm"></i> Map Pay Item to Salary Months
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body py-4">
+                <div class="alert alert-info d-flex align-items-center mb-4" role="alert">
+                    <span class="alert-icon text-info me-2"><i class="ti ti-info-circle ti-xs"></i></span>
+                    <span class="small">
+                        Select the exact unpaid frozen salary bill month to inject this pay item deduction into. 
+                        If an employee has multiple pending bills, you must choose which month receives the deduction. 
+                        Leave it as <strong>None</strong> to skip the deduction for that employee.
+                    </span>
+                </div>
+                
+                <form id="mappingForm">
+                    <input type="hidden" name="salary_id" id="map_salary_id">
+                    <div class="table-responsive border rounded text-nowrap">
+                        <table class="table table-hover table-sm mb-0">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th style="width: 50px;" class="text-center">#</th>
+                                    <th>Employee</th>
+                                    <th class="text-end">Pay Item Amount</th>
+                                    <th>Target Salary Month (Frozen Bill)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mappingModalTableBody">
+                                <!-- Populated via AJAX -->
+                            </tbody>
+                        </table>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-top bg-light">
+                <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="confirmMappingBtn">
+                    <i class="ti ti-check me-1 ti-xs"></i> Confirm & Apply Deductions
                 </button>
             </div>
         </div>
@@ -781,8 +905,10 @@ $(function () {
         // Hide previous results
         $('#billResultsContainer').slideUp();
         $('#ajaxSummaryWrapper').slideUp();
+    });
 
-        // Just refresh the DB batches, don't update current draft in real-time
+    // Standalone Existing Bills Filter Change
+    $(document).on('change', '#existing-bills-filter', function() {
         fetchExistingBills();
     });
 
@@ -790,28 +916,17 @@ $(function () {
     $('#bill_pay_item_id').trigger('change');
 
     function fetchExistingBills() {
-        const month = $('#bill_month').val();
-        const year = $('#bill_year').val();
-        const payItemId = $('#bill_pay_item_id').val();
-        const employmentType = $('#bill_employment_type').val();
         const projectId = $('#bill_project_id').val();
+        const filterItemName = $('#existing-bills-filter').val();
 
-        if (!month || !year) {
-            $('#existing-bills-table-body').html('<tr><td colspan="5" class="text-center py-4 text-muted">Select Period and Type to see existing bills</td></tr>');
-            $('#existing-bills-info').addClass('d-none');
-            return;
-        }
-
-        $('#existing-bills-table-body').html('<tr><td colspan="5" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary me-2"></div><span>Loading history...</span></td></tr>');
+        const loader = '<tr><td colspan="4" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary me-2"></div><span>Loading history...</span></td></tr>';
+        $('#tbody-not-finalized, #tbody-finalized, #tbody-allocated').html(loader);
 
         $.ajax({
             url: `/pms/pay-item-master/fetch-batches/${projectId}`,
             method: 'GET',
             data: {
-                month: month,
-                year: year,
-                employment_type: employmentType,
-                pay_item_id: payItemId
+                filter_item_name: filterItemName
             },
             success: function(res) {
                 if (res.success) {
@@ -824,17 +939,27 @@ $(function () {
 
     function renderExistingBillsTable() {
         const batches = window.lastFetchedBatches || [];
-        let rowsHtml = '';
+        
+        let htmlNotFinalized = '';
+        let htmlFinalized = '';
+        let htmlAllocated = '';
+        
+        let countNotFinalized = 0;
+        let countFinalized = 0;
+        let countAllocated = 0;
 
         if (batches.length > 0) {
             batches.forEach(batch => {
                 let badgeClass = 'bg-label-secondary';
                 if (batch.status === 'In Progress') badgeClass = 'bg-label-warning';
-                if (batch.status === 'Saved') badgeClass = 'bg-label-success';
+                if (batch.status === 'Saved') badgeClass = 'bg-label-info';
                 if (batch.status === 'Finalized') badgeClass = 'bg-label-primary';
+                if (batch.status === 'Allocated') badgeClass = 'bg-label-success';
                 
                 let actionsHtml = '';
-                if (batch.status !== 'Finalized') {
+                
+                // NOT FINALIZED ACTIONS
+                if (['Draft', 'In Progress', 'Saved'].includes(batch.status)) {
                     actionsHtml += `
                         <button type="button" class="btn btn-sm btn-outline-warning edit-batch-btn mb-1 w-100"
                             data-salary-id="${batch.salary_id}"
@@ -857,9 +982,6 @@ $(function () {
                             <i class="ti ti-list me-1"></i> List
                         </button>
                     `;
-                }
-
-        if (batch.status === 'Saved' || batch.status === 'In Progress' || batch.status === 'Draft') {
                     actionsHtml += `
                         <button type="button" class="btn btn-sm btn-success finalize-batch-btn w-100 mt-1"
                             data-salary-id="${batch.salary_id}">
@@ -868,6 +990,7 @@ $(function () {
                     `;
                 }
 
+                // FINALIZED ACTIONS
                 if (batch.status === 'Finalized') {
                     actionsHtml += `
                         <button type="button" class="btn btn-sm btn-success view-batch-btn w-100"
@@ -880,8 +1003,21 @@ $(function () {
                         </button>
                     `;
                 }
+                
+                // ALLOCATED ACTIONS
+                if (batch.status === 'Allocated') {
+                    actionsHtml += `
+                        <button type="button" class="btn btn-sm btn-success view-batch-btn w-100"
+                            data-salary-id="${batch.salary_id}">
+                            <i class="ti ti-eye me-1"></i> View Bill
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary w-100 mt-1" disabled>
+                            <i class="ti ti-check me-1"></i> Allocated
+                        </button>
+                    `;
+                }
 
-                rowsHtml += `
+                const rowHtml = `
                     <tr class="existing-batch-row db-batch" data-id="${batch.salary_id}">
                         <td class="align-middle">
                             <span class="badge ${badgeClass} small mb-1">${batch.status}</span><br>
@@ -899,16 +1035,35 @@ $(function () {
                         </td>
                     </tr>
                 `;
+
+                if (['Draft', 'In Progress', 'Saved'].includes(batch.status)) {
+                    htmlNotFinalized += rowHtml;
+                    countNotFinalized++;
+                } else if (batch.status === 'Finalized') {
+                    htmlFinalized += rowHtml;
+                    countFinalized++;
+                } else if (batch.status === 'Allocated') {
+                    htmlAllocated += rowHtml;
+                    countAllocated++;
+                }
             });
         }
+
+        const emptyRow = `<tr><td colspan="4" class="text-center py-5 text-muted"><i class="ti ti-history fs-1 mb-2 d-block opacity-25"></i>No bills found in this category.</td></tr>`;
+
+        $('#tbody-not-finalized').html(htmlNotFinalized || emptyRow);
+        $('#tbody-finalized').html(htmlFinalized || emptyRow);
+        $('#tbody-allocated').html(htmlAllocated || emptyRow);
+        
+        $('#count-not-finalized').text(countNotFinalized);
+        $('#count-finalized').text(countFinalized);
+        $('#count-allocated').text(countAllocated);
 
         if (batches.length > 0) {
             $('#existing-bills-info').removeClass('d-none');
         } else {
-            rowsHtml = '<tr><td colspan="4" class="text-center py-4 text-muted">No existing bills found for this selection</td></tr>';
             $('#existing-bills-info').addClass('d-none');
         }
-        $('#existing-bills-table-body').html(rowsHtml);
     }
 
     // Handle "Edit" button click on existing batch
@@ -981,40 +1136,63 @@ $(function () {
     });
 
     $(document).on('click', '.finalize-batch-btn', function() {
-        if (!confirm('Are you sure you want to Finalize this bill? This will lock it from further editing and automatically apply the amounts to the core payroll module.')) {
-            return;
-        }
-
         const btn = $(this);
         const salaryId = btn.data('salary-id');
         const originalHtml = btn.html();
-        
-        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Finalizing...');
 
-        $.ajax({
-            url: "{{ route('pms.pay-item-master.finalize-bill') }}",
-            method: 'POST',
-            data: {
-                _token: $('input[name="_token"]').val() || $('meta[name="csrf-token"]').attr('content'),
-                salary_id: salaryId
+        Swal.fire({
+            title: 'Finalize Bill?',
+            text: "This will lock the bill from further editing and automatically apply the amounts to the core payroll module. This action cannot be undone.",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, Finalize it!',
+            customClass: {
+                confirmButton: 'btn btn-primary me-3',
+                cancelButton: 'btn btn-label-secondary'
             },
-            success: function(res) {
-                if (res.success && res.summary) {
-                    alert(res.message);
-                    fetchExistingBills();
-                    renderSummary(res);
-                } else if (res.success) {
-                    alert(res.message);
-                    fetchExistingBills();
-                } else {
-                    alert(res.message || 'Error finalizing bill.');
-                }
-            },
-            error: function(xhr) {
-                alert('Failed to finalize bill. ' + (xhr.responseJSON ? xhr.responseJSON.message : ''));
-            },
-            complete: function() {
-                btn.prop('disabled', false).html(originalHtml);
+            buttonsStyling: false
+        }).then(function (result) {
+            if (result.value) {
+                btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Finalizing...');
+
+                $.ajax({
+                    url: "{{ route('pms.pay-item-master.finalize-bill') }}",
+                    method: 'POST',
+                    data: {
+                        _token: $('input[name="_token"]').val() || $('meta[name="csrf-token"]').attr('content'),
+                        salary_id: salaryId
+                    },
+                    success: function(res) {
+                        if (res.success && res.summary) {
+                            toastr.success(res.message, 'Success');
+                            fetchExistingBills();
+                            renderSummary(res);
+                        } else if (res.success) {
+                            toastr.success(res.message, 'Success');
+                            fetchExistingBills();
+                        } else {
+                            Swal.fire({
+                                icon: 'error',
+                                title: 'Error',
+                                text: res.message || 'Error finalizing bill.',
+                                customClass: { confirmButton: 'btn btn-primary' },
+                                buttonsStyling: false
+                            });
+                        }
+                    },
+                    error: function(xhr) {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Failed',
+                            text: 'Failed to finalize bill. ' + (xhr.responseJSON ? xhr.responseJSON.message : ''),
+                            customClass: { confirmButton: 'btn btn-primary' },
+                            buttonsStyling: false
+                        });
+                    },
+                    complete: function() {
+                        btn.prop('disabled', false).html(originalHtml);
+                    }
+                });
             }
         });
     });
@@ -1034,11 +1212,11 @@ $(function () {
                 if (res.success && res.summary) {
                     renderSummary(res);
                 } else {
-                    alert(res.message || 'Could not load bill summary.');
+                    toastr.warning(res.message || 'Could not load bill summary.');
                 }
             },
             error: function(xhr) {
-                alert('Failed to load bill. ' + (xhr.responseJSON ? xhr.responseJSON.message : ''));
+                toastr.error('Failed to load bill. ' + (xhr.responseJSON ? xhr.responseJSON.message : ''));
             },
             complete: function() {
                 btn.prop('disabled', false).html(originalHtml);
@@ -1046,40 +1224,132 @@ $(function () {
         });
     });
 
-    // Handle "Add to Salary Deductions" button click
+    // Handle "Add to Salary Deductions" button click - NEW MAPPING FLOW
     $(document).on('click', '.apply-deductions-btn', function() {
-        if (!confirm('Add the amounts from this finalized bill to Salary Deductions for all affected employees?\n\nThis will update the Core Payroll records so that Prof. Tax / Festival Allowance / Bonus values auto-fetch in the Frozen Employees deduction screen.')) {
-            return;
-        }
-
         const btn = $(this);
         const salaryId = btn.data('salary-id');
         const originalHtml = btn.html();
+
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Preparing...');
+
+        $.ajax({
+            url: "{{ route('pms.pay-item-master.get-frozen-bills-mapping') }}",
+            method: 'GET',
+            data: { salary_id: salaryId },
+            success: function(res) {
+                if (res.success) {
+                    $('#map_salary_id').val(salaryId);
+                    
+                    let tbody = '';
+                    res.data.forEach((emp, index) => {
+                        let options = '<option value="">-- Select a Salary Month (None) --</option>';
+                        if (emp.frozen_bills && emp.frozen_bills.length > 0) {
+                            emp.frozen_bills.forEach((frz, i) => {
+                                // Default selection logic: select the LATEST available frozen bill (which is the last in the chronogically sorted array)
+                                const isLatest = (i === emp.frozen_bills.length - 1);
+                                const sel = isLatest ? 'selected' : '';
+                                options += `<option value="${frz.paymonth}|${frz.year}" ${sel}>${frz.label}</option>`;
+                            });
+                        } else {
+                            options = '<option value="" selected>No Frozen Bills Available (Will Skip)</option>';
+                        }
+
+                        tbody += `
+                            <tr>
+                                <td class="text-center text-muted small">${index + 1}</td>
+                                <td>
+                                    <div class="fw-bold text-dark">${emp.name}</div>
+                                    <small class="text-muted">ID: ${emp.p_id}</small>
+                                    <input type="hidden" name="mappings[${index}][p_id]" value="${emp.p_id}">
+                                </td>
+                                <td class="text-end fw-bold text-primary">₹${parseFloat(emp.amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                <td>
+                                    <select name="mappings[${index}][target_period]" class="form-select border-info" ${emp.frozen_bills.length === 0 ? 'disabled' : ''}>
+                                        ${options}
+                                    </select>
+                                </td>
+                            </tr>
+                        `;
+                    });
+
+                    $('#mappingModalTableBody').html(tbody);
+                    
+                    const modal = new bootstrap.Modal(document.getElementById('mappingModal'));
+                    modal.show();
+                    
+                } else {
+                    toastr.error(res.message || 'Could not fetch mapping data.', 'Error');
+                }
+            },
+            error: function(xhr) {
+                toastr.error('Failed: ' + (xhr.responseJSON ? xhr.responseJSON.message : xhr.statusText), 'Failed');
+            },
+            complete: function() {
+                btn.prop('disabled', false).html(originalHtml);
+            }
+        });
+    });
+
+    // Handle the actual submission from the Modal
+    $('#confirmMappingBtn').on('click', function() {
+        const btn = $(this);
+        const originalHtml = btn.html();
+        
+        // Grab the form, but we need to split the select value "Month|Year" into paymonth & year
+        const formData = new FormData($('#mappingForm')[0]);
+        const payload = {
+            _token: $('input[name="_token"]').val() || $('meta[name="csrf-token"]').attr('content'),
+            salary_id: $('#map_salary_id').val(),
+            mappings: []
+        };
+        
+        let i = 0;
+        while(formData.has(`mappings[${i}][p_id]`)) {
+            const p_id = formData.get(`mappings[${i}][p_id]`);
+            const target = formData.get(`mappings[${i}][target_period]`);
+            
+            let p_month = '';
+            let p_year = '';
+            
+            if (target && target.includes('|')) {
+                const parts = target.split('|');
+                p_month = parts[0];
+                p_year = parts[1];
+            }
+            
+            payload.mappings.push({
+                p_id: p_id,
+                paymonth: p_month,
+                year: p_year
+            });
+            i++;
+        }
+
         btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Applying...');
 
         $.ajax({
             url: "{{ route('pms.pay-item-master.apply-to-deductions') }}",
             method: 'POST',
-            data: {
-                _token: $('input[name="_token"]').val() || $('meta[name="csrf-token"]').attr('content'),
-                salary_id: salaryId
-            },
+            data: payload,
             success: function(res) {
                 if (res.success) {
-                    // Show a styled success modal instead of plain alert
-                    const msg = res.message || 'Successfully applied to Salary Deductions!';
-                    if (typeof Swal !== 'undefined') {
-                        Swal.fire({ icon: 'success', title: 'Done!', text: msg, confirmButtonText: 'OK' });
-                    } else {
-                        alert('✅ ' + msg);
-                    }
+                    bootstrap.Modal.getInstance(document.getElementById('mappingModal')).hide();
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Success!',
+                        text: res.message || 'The bill amounts have been successfully mapped and applied.',
+                        customClass: { confirmButton: 'btn btn-primary' },
+                        buttonsStyling: false
+                    });
                     fetchExistingBills();
                 } else {
-                    alert('Error: ' + (res.message || 'Could not apply to deductions.'));
+                    toastr.error(res.message || 'Could not apply mapping.', 'Error');
                 }
             },
             error: function(xhr) {
-                alert('Failed: ' + (xhr.responseJSON ? xhr.responseJSON.message : xhr.statusText));
+                let errText = xhr.responseJSON ? xhr.responseJSON.message : xhr.statusText;
+                if (xhr.status === 422) { errText = 'Validation failed. Please check form.'; }
+                toastr.error('Failed: ' + errText, 'Failed');
             },
             complete: function() {
                 btn.prop('disabled', false).html(originalHtml);
@@ -1097,7 +1367,7 @@ $(function () {
         const employmentType = $('#bill_employment_type').val();
         
         if (!itemId || !month || !year) {
-            alert('Please select Pay Item, Month, and Year.');
+            toastr.warning('Please select Pay Item, Month, and Year.', 'Missing Info');
             return;
         }
 
@@ -1208,15 +1478,15 @@ $(function () {
                     $('#editableListArea').show();
                     calculateTotalBill();
                 } else {
-                    alert(res.message || 'Error generating list.');
+                    toastr.error(res.message || 'Error generating list.', 'Error');
                 }
             },
             error: function (xhr) {
                 let msg = 'Failed to fetch employee list.';
                 if (xhr.responseJSON && xhr.responseJSON.message) {
-                    msg += '\n\nError: ' + xhr.responseJSON.message;
+                    msg += ' ' + xhr.responseJSON.message;
                 }
-                alert(msg);
+                toastr.error(msg, 'Connection Error');
             },
             complete: function () {
                 btn.prop('disabled', false).html('<i class="ti ti-list me-1 ti-xs"></i> List');
@@ -1238,13 +1508,13 @@ $(function () {
 
         if (btnId === 'btnDirectSaveBill') {
             if (!itemId || !month || !year || !salaryId) {
-                alert('Please fill in Pay Item, Month, Year, and Id before saving.');
+                toastr.warning('Please fill in Pay Item, Month, Year, and Id before saving.', 'Incomplete Form');
                 if (!salaryId) $('#bill_salary_id').focus();
                 return;
             }
         } else {
             if (!itemId || !month || !year) {
-                alert('Please fill in Pay Item, Month, and Year before saving.');
+                toastr.warning('Please fill in Pay Item, Month, and Year before saving.', 'Incomplete Form');
                 return;
             }
         }
@@ -1288,14 +1558,14 @@ $(function () {
                         fetchExistingBills();
                         
                         // 4. Notification
-                        alert('Draft saved. You can now List the employees.');
+                        toastr.success('Draft saved. You can now List the employees.', 'Draft Saved');
                     } else {
-                        alert(res.message || 'Error saving draft.');
+                        toastr.error(res.message || 'Error saving draft.', 'Error');
                         btn.html(originalHtml).prop('disabled', false);
                     }
                 },
                 error: function(xhr) {
-                    alert('Failed to save draft. ' + (xhr.responseJSON ? xhr.responseJSON.message : ''));
+                    toastr.error('Failed to save draft. ' + (xhr.responseJSON ? xhr.responseJSON.message : ''), 'Failed');
                     btn.html(originalHtml).prop('disabled', false);
                 }
             });
@@ -1431,7 +1701,7 @@ $(function () {
         }
     } catch (err) {
         console.error("renderSummary Error:", err);
-        alert("Error showing bill summary: " + err.message);
+        toastr.error("Error showing bill summary: " + err.message, 'UI Error');
     }
 }
 
@@ -1461,11 +1731,11 @@ $(function () {
 
                     // draftBills push removed to prevent duplicates
                 } else {
-                    alert(res.message || 'Error saving bill.');
+                    toastr.error(res.message || 'Error saving bill.', 'Error');
                 }
             },
             error: function(xhr) {
-                alert('Failed to save bill. ' + (xhr.responseJSON ? xhr.responseJSON.message : ''));
+                toastr.error('Failed to save bill. ' + (xhr.responseJSON ? xhr.responseJSON.message : ''), 'Failed');
             },
             complete: function() {
                 btn.prop('disabled', false).html(originalHtml);
@@ -1514,7 +1784,7 @@ $(function () {
         const id = $('#bill_salary_id').val();
         
         if (!itemId || !month || !year) {
-            alert('Please fill in Pay Item, Month, and Year details.');
+            toastr.warning('Please fill in Pay Item, Month, and Year details.', 'Missing Info');
             return;
         }
 
@@ -1570,7 +1840,13 @@ $(function () {
                 success: function(res) {
                     if (res.success) {
                         modal.hide();
-                        alert('Bill saved successfully. You can now review and Finalize it from the Existing Bills list.');
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Bill Saved!',
+                            text: 'Bill saved successfully. You can now review and Finalize it from the Existing Bills list.',
+                            customClass: { confirmButton: 'btn btn-primary' },
+                            buttonsStyling: false
+                        });
                         
                         // Clear the active rendering list so they must interact with history now
                         $('#billResultsContainer').slideUp();
@@ -1580,11 +1856,11 @@ $(function () {
                         
                         fetchExistingBills();
                     } else {
-                        alert(res.message || 'Error saving bill.');
+                        toastr.error(res.message || 'Error saving bill.', 'Error');
                     }
                 },
                 error: function(xhr) {
-                    alert('Failed to save bill. ' + (xhr.responseJSON ? xhr.responseJSON.message : ''));
+                    toastr.error('Failed to save bill. ' + (xhr.responseJSON ? xhr.responseJSON.message : ''), 'Failed');
                 },
                 complete: function() {
                     btn.prop('disabled', false).html(originalHtml);
@@ -1601,15 +1877,15 @@ $(function () {
                     if (res.success && res.summary) {
                         modal.hide();
                         // Path 1: Just update history in background
-                        alert('Bill saved to history successfully');
+                        toastr.success('Bill saved to history successfully', 'Success');
                         fetchExistingBills();
                         $('#add-pay-bill-action-container').addClass('d-none');
                     } else {
-                        alert(res.message || 'Error saving batch.');
+                        toastr.error(res.message || 'Error saving batch.', 'Error');
                     }
                 },
                 error: function(xhr) {
-                    alert('Failed to save batch. ' + (xhr.responseJSON ? xhr.responseJSON.message : ''));
+                    toastr.error('Failed to save batch. ' + (xhr.responseJSON ? xhr.responseJSON.message : ''), 'Failed');
                 },
                 complete: function() {
                     btn.prop('disabled', false).html(originalHtml);
@@ -1617,6 +1893,19 @@ $(function () {
             });
         }
     });
+
+    // ---- Session Notifications ----
+    @if(session('success'))
+        toastr.success("{{ session('success') }}", 'Success');
+    @endif
+    @if(session('error'))
+        toastr.error("{{ session('error') }}", 'Error');
+    @endif
+    @if($errors->any())
+        @foreach($errors->all() as $error)
+            toastr.error("{{ $error }}", 'Validation Error');
+        @endforeach
+    @endif
 
 });
 </script>

@@ -128,38 +128,36 @@
                                 $uiFa = resolveDeductionUI($payroll->payroll_festival_allowance ?? 0, $payroll->dm_festival_value, $payroll->dm_festival_type, $payroll->dm_festival_amount);
                                 $uiBonus = resolveDeductionUI($payroll->payroll_bonus ?? 0, $payroll->dm_bonus_value, $payroll->dm_bonus_type, $payroll->dm_bonus_amount);
                                 
-                                // Compute the PRORATED salary from frozen components
-                                $totalWorkingDays = (float)($payroll->total_working_days ?? 0);
-                                $daysWorked = (float)($payroll->days_worked ?? 0);
-                                $grossSalary = (float)($payroll->gross_salary ?? 0);
-                                $arrear = (float)($payroll->other_allowance ?? 0);
-                                
-                                // Prorated base is already computed as gross_salary in Salary Management
-                                $proratedSalary = $grossSalary;
-                                
-                                // Gross Salary (before deductions) = prorated + arrear + festival allowance (earning) + bonus (earning)
-                                $computedGrossSalary = $proratedSalary + $arrear + $uiFa['amt'] + $uiBonus['amt'];
-                                
-                                // Sum ALL deduction amounts for net salary computation (Employer shares EPF & EDLI are excluded!)
-                                $allDeductionAmts = $uiTds['amt'] + $uiPf['amt'] +
-                                                    $ui192['amt'] + $ui194['amt'] + $uiPt['amt'] + $uiEsi['amt'] + 
-                                                    $uiLic['amt'] + $uiMedisep['amt'] + $uiGpf['amt'] + 
-                                                    $uiSli1['amt'] + $uiSli2['amt'] + $uiSli3['amt'] + 
-                                                    $uiGis['amt'] + $uiGpais['amt'] + $uiOther['amt'];
-                                
-                                $computedNetSalary = $computedGrossSalary - $allDeductionAmts;
-                                $displayedPercentage = ($grossSalary > 0) ? ($computedNetSalary / $grossSalary) * 100 : 0;
-                            @endphp
-                            <tr>
-                                <input type="hidden" name="p_id[]" value="{{ $payroll->p_id }}">
-                                <input type="hidden" name="months[{{ $index }}]" value="{{ $payroll->paymonth }}">
-                                <input type="hidden" name="years[{{ $index }}]" value="{{ $payroll->year }}">
-                                <input type="hidden" class="gross-salary-val" value="{{ $payroll->gross_salary ?? 0 }}">
-                                <input type="hidden" class="computed-gross-salary-val" value="{{ $computedGrossSalary }}">
-                                <input type="hidden" class="base-computed-gross-val" value="{{ $proratedSalary + $arrear }}">
-                                <input type="hidden" class="basic-pay-val" value="{{ $payroll->basic_pay ?? 0 }}">
-                                <input type="hidden" class="da-val" value="{{ $payroll->da ?? 0 }}">
-                                <input type="hidden" class="employment-type-val" value="{{ $payroll->employment_type ?? '' }}">
+                                  // Use the FROZEN net_salary as the base — this already includes
+                                  // prorated salary, EPF employer share, EDLI charges, arrears, and
+                                  // any other components applied at the time of payroll freezing.
+                                  $grossSalary = (float)($payroll->frozen_gross_salary ?? $payroll->gross_salary ?? 0);
+                                  $frozenNetSalary = (float)($payroll->net_salary ?? 0);
+                                  
+                                  // Festival Allowance and Bonus are earnings that add to the gross
+                                  $computedGrossSalary = $frozenNetSalary + $uiFa['amt'] + $uiBonus['amt'];
+                                  
+                                  // Sum ALL deduction amounts for net salary computation
+                                  $allDeductionAmts = $uiTds['amt'] + $uiPf['amt'] +
+                                                      $ui192['amt'] + $ui194['amt'] + $uiPt['amt'] + $uiEsi['amt'] + 
+                                                      $uiLic['amt'] + $uiMedisep['amt'] + $uiGpf['amt'] + 
+                                                      $uiSli1['amt'] + $uiSli2['amt'] + $uiSli3['amt'] + 
+                                                      $uiGis['amt'] + $uiGpais['amt'] + $uiOther['amt'];
+                                  
+                                  $computedNetSalary = $computedGrossSalary - $allDeductionAmts;
+                                  $displayedPercentage = ($computedGrossSalary > 0) ? ($computedNetSalary / $computedGrossSalary) * 100 : 0;
+                              @endphp
+                              <tr>
+                                  <input type="hidden" name="p_id[]" value="{{ $payroll->p_id }}">
+                                  <input type="hidden" name="months[{{ $index }}]" value="{{ $payroll->paymonth }}">
+                                  <input type="hidden" name="years[{{ $index }}]" value="{{ $payroll->year }}">
+                                  <input type="hidden" class="gross-salary-val" value="{{ $grossSalary }}">
+                                  <input type="hidden" class="frozen-net-salary-val" value="{{ $frozenNetSalary }}">
+                                  <input type="hidden" class="computed-gross-salary-val" value="{{ $computedGrossSalary }}">
+                                  <input type="hidden" class="base-computed-gross-val" value="{{ $frozenNetSalary }}">
+                                  <input type="hidden" class="basic-pay-val" value="{{ $payroll->service_basic_pay ?? $payroll->basic_pay ?? 0 }}">
+                                  <input type="hidden" class="da-val" value="{{ $payroll->service_da ?? $payroll->da ?? 0 }}">
+                                  <input type="hidden" class="employment-type-val" value="{{ $payroll->employment_type ?? '' }}">
                                 
                                 <td class="fw-semibold">{{ $payroll->name }}</td>
                                 <td class="small text-muted">{{ $payroll->p_id }}</td>

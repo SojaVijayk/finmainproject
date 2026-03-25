@@ -59,7 +59,7 @@
           <div class="mb-3">
             <label class="form-label" for="default_salary_id">Salary ID / Batch Reference (Required)</label>
             <input type="text" id="default_salary_id" name="default_salary_id" class="form-control" placeholder="e.g. SAL-FEB-2024" value="{{ $defaultSalaryId }}" required>
-            <div class="form-text">This value will be pre-filled for all employees.</div>
+            <div id="salary-id-feedback" class="form-text mt-1">This value will be pre-filled for all employees.</div>
           </div>
 
           <div class="d-flex justify-content-between gap-3">
@@ -73,6 +73,18 @@
   </div>
 
   <div class="col-md-7">
+    @if(session('error'))
+      <div class="alert alert-danger d-flex align-items-center mb-3" role="alert">
+          <i class="ti ti-alert-circle me-2 flex-shrink-0"></i>
+          <span>{{ session('error') }}</span>
+      </div>
+    @endif
+    @if(session('success'))
+      <div class="alert alert-success d-flex align-items-center mb-3" role="alert">
+          <i class="ti ti-check me-2 flex-shrink-0"></i>
+          <span>{{ session('success') }}</span>
+      </div>
+    @endif
     <div id="batch-results" class="card mb-4 d-none">
       <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="mb-0">Existing Salary Management Bills</h5>
@@ -90,6 +102,7 @@
                 <th>Type</th>
                 <th>Salary ID</th>
                 <th class="text-center">Status</th>
+                <th class="text-center">Actions</th>
               </tr>
             </thead>
             <tbody id="batch-table-body">
@@ -190,10 +203,94 @@ document.addEventListener('DOMContentLoaded', function() {
         addBillModal.show();
     });
 
+    // Validation function
+    function validateSalaryId(id, month, year, typeName) {
+        const batches = window.lastFetchedBatches || [];
+        const existing = batches.find(b => b.salary_id.toLowerCase() === id.toLowerCase());
+        
+        if (existing) {
+            if (existing.paymonth === month && existing.year == year && existing.employment_type === typeName) {
+                return { valid: true, isExisting: true, conflict: null }; 
+            } else {
+                return { valid: false, isExisting: false, conflict: existing }; 
+            }
+        }
+        
+        // Check draft bills too
+        const draft = draftBills.find(b => b.id.toLowerCase() === id.toLowerCase());
+        if (draft) {
+            if (draft.month === month && draft.year == year && draft.typeName === typeName) {
+                return { valid: true, isExisting: true, conflict: null };
+            } else {
+                return { valid: false, isExisting: false, conflict: {paymonth: draft.month, year: draft.year, employment_type: draft.typeName} };
+            }
+        }
+
+        return { valid: true, isExisting: false, conflict: null };
+    }
+
+    // Real-time detection on the main input
+    const feedbackEl = document.getElementById('salary-id-feedback');
+    salaryIdInput.addEventListener('input', function() {
+        const idVal = this.value.trim();
+        if(!idVal) {
+            feedbackEl.className = 'form-text mt-1 text-muted';
+            feedbackEl.innerHTML = 'This value will be pre-filled for all employees.';
+            return;
+        }
+
+        const month = monthSelect.value;
+        const year = yearSelect.value;
+        const typeSelectIdx = employmentTypeSelect.selectedIndex;
+        const employmentTypeName = typeSelectIdx >= 0 ? employmentTypeSelect.options[typeSelectIdx].text : null;
+
+        if (!month || !year || !employmentTypeName) return;
+
+        const validation = validateSalaryId(idVal, month, year, employmentTypeName);
+        if (!validation.valid) {
+            feedbackEl.className = 'form-text mt-1 text-danger fw-bold';
+            feedbackEl.innerHTML = `<i class="ti ti-alert-circle"></i> Error: ID already in use by ${validation.conflict.paymonth} ${validation.conflict.year} (${validation.conflict.employment_type}).`;
+            salaryIdInput.classList.add('is-invalid');
+        } else if (validation.isExisting) {
+            feedbackEl.className = 'form-text mt-1 text-success fw-bold';
+            feedbackEl.innerHTML = `<i class="ti ti-check"></i> Opening existing batch for this period.`;
+            salaryIdInput.classList.remove('is-invalid');
+            salaryIdInput.classList.add('is-valid');
+        } else {
+            feedbackEl.className = 'form-text mt-1 text-primary fw-bold';
+            feedbackEl.innerHTML = `<i class="ti ti-check"></i> Unique ID available for new batch.`;
+            salaryIdInput.classList.remove('is-invalid', 'is-valid');
+        }
+    });
+
+    // Form submission validation
+    document.getElementById('selection-form').addEventListener('submit', function(e) {
+        const idVal = salaryIdInput.value.trim();
+        const month = monthSelect.value;
+        const year = yearSelect.value;
+        const employmentTypeName = employmentTypeSelect.options[employmentTypeSelect.selectedIndex].text;
+        
+        const validation = validateSalaryId(idVal, month, year, employmentTypeName);
+        if (!validation.valid) {
+            e.preventDefault();
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'ID Already in Use',
+                    text: `The Salary ID "${idVal}" is already registered for ${validation.conflict.paymonth} ${validation.conflict.year} (${validation.conflict.employment_type}). Please enter a unique ID for this period.`
+                });
+            } else {
+                alert(`Error: The Salary ID belongs to ${validation.conflict.paymonth} ${validation.conflict.year}. Please use a unique ID.`);
+            }
+            salaryIdInput.focus();
+        }
+    });
+
     // Handle Modal Confirm
     modalConfirmBtn.addEventListener('click', function() {
         const newId = modalSalaryIdInput.value.trim();
         if (!newId) {
+            modalError.innerHTML = 'Salary ID is required!';
             modalError.classList.remove('d-none');
             return;
         }
@@ -201,6 +298,13 @@ document.addEventListener('DOMContentLoaded', function() {
         const month = monthSelect.value;
         const year = yearSelect.value;
         const employmentTypeName = employmentTypeSelect.options[employmentTypeSelect.selectedIndex].text;
+
+        const validation = validateSalaryId(newId, month, year, employmentTypeName);
+        if (!validation.valid) {
+            modalError.innerHTML = `This ID is already used by ${validation.conflict.paymonth} ${validation.conflict.year} (${validation.conflict.employment_type}). Please use a unique ID.`;
+            modalError.classList.remove('d-none');
+            return;
+        }
 
         // Save to draft bills so it persists across fetches
         if (!draftBills.find(b => b.id === newId)) {
@@ -214,6 +318,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
         salaryIdInput.value = newId;
         addBillModal.hide();
+        
+        // Trigger the input event to update the main form feedback
+        salaryIdInput.dispatchEvent(new Event('input'));
 
         // Refresh list to show the new item
         renderBillsList();
@@ -252,19 +359,29 @@ document.addEventListener('DOMContentLoaded', function() {
         // 1. Render all fetched batches
         if (batches.length > 0) {
             batches.forEach(batch => {
-                const statusBadge = batch.is_frozen 
+                const isFrozen = !!batch.is_frozen;
+                const statusBadge = isFrozen 
                     ? '<span class="badge bg-label-success">Frozen</span>' 
                     : '<span class="badge bg-label-warning">Processing</span>';
+
+                const actionBtn = !isFrozen
+                    ? `<a href="{{ route('pms.salary-management.resume-edit', $project_id) }}?salary_id=${encodeURIComponent(batch.salary_id)}"
+                          class="btn btn-xs btn-warning py-0 px-2" style="font-size:11px;"
+                          title="Reload this bill and continue editing">
+                          <i class="ti ti-edit me-1"></i>Edit / Continue
+                       </a>`
+                    : '<span class="text-muted" style="font-size:11px;">—</span>';
                 
                 const row = `
                     <tr>
                         <td class="text-center">
                             <input type="checkbox" name="filter_salary_ids[]" value="${batch.salary_id}" class="form-check-input batch-checkbox">
                         </td>
-                        <td><small>${month} ${year}</small></td>
-                        <td><small>${employmentTypeName}</small></td>
+                        <td><small>${batch.paymonth} ${batch.year}</small></td>
+                        <td><small>${batch.employment_type}</small></td>
                         <td class="fw-semibold text-primary salary-id-link" style="cursor: pointer;" title="Click to use this ID">${batch.salary_id && batch.salary_id !== 'null' ? batch.salary_id : 'Unnamed Batch'}</td>
                         <td class="text-center">${statusBadge}</td>
+                        <td class="text-center">${actionBtn}</td>
                     </tr>
                 `;
                 tableBody.insertAdjacentHTML('beforeend', row);
@@ -297,19 +414,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Function to fetch bills
     function fetchBills() {
-        const month = monthSelect.value;
-        const year = yearSelect.value;
-        const employmentTypeId = employmentTypeSelect.value;
-
-        if (!month || !year || !employmentTypeId || employmentTypeId === "") {
-            resultsDiv.classList.add('d-none');
-            return;
-        }
-
         tableBody.innerHTML = '<tr><td colspan="5" class="text-center"><span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Fetching Bills...</td></tr>';
         resultsDiv.classList.remove('d-none');
 
-        const url = "{{ route('pms.salary-management.fetch-batches', $project_id) }}?month=" + month + "&year=" + year + "&employment_type=" + employmentTypeId;
+        const url = "{{ route('pms.salary-management.fetch-batches', $project_id) }}";
 
         fetch(url)
             .then(response => response.json())
@@ -325,10 +433,13 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     }
 
-    // Auto-fetch on changes
-    monthSelect.addEventListener('change', fetchBills);
-    yearSelect.addEventListener('change', fetchBills);
-    employmentTypeSelect.addEventListener('change', fetchBills);
+    // Auto-fetch and re-validate on changes
+    [monthSelect, yearSelect, employmentTypeSelect].forEach(el => {
+        el.addEventListener('change', () => {
+            fetchBills();
+            salaryIdInput.dispatchEvent(new Event('input'));
+        });
+    });
 
     // Initial load fetch
     fetchBills();
@@ -338,8 +449,9 @@ document.addEventListener('DOMContentLoaded', function() {
         if (e.target.classList.contains('salary-id-link')) {
             const idVal = e.target.textContent.trim();
             salaryIdInput.value = (idVal === 'Unnamed Batch') ? '' : idVal;
-            salaryIdInput.classList.add('is-valid'); // Visual feedback
-            setTimeout(() => salaryIdInput.classList.remove('is-valid'), 2000);
+            
+            // Trigger the input event to run validation
+            salaryIdInput.dispatchEvent(new Event('input'));
             
             // Scroll to input for mobile users/long pages
             salaryIdInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
