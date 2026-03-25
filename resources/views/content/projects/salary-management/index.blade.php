@@ -86,32 +86,87 @@
       </div>
     @endif
     <div id="batch-results" class="card mb-4 d-none">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <h5 class="mb-0">Existing Salary Management Bills</h5>
-        <span class="badge bg-label-info">Period Summary</span>
+      <div class="card-header border-bottom pb-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h5 class="mb-0">Existing Salary Management Bills</h5>
+        </div>
+        <div class="d-flex justify-content-end align-items-center gap-2">
+            <label class="mb-0 fw-semibold" style="font-size: 13px;">Filter:</label>
+            <select id="filter-year" class="form-select form-select-sm w-auto">
+              <option value="All">All Years</option>
+              @foreach($years as $y)
+                <option value="{{ $y }}">{{ $y }}</option>
+              @endforeach
+            </select>
+            <select id="filter-type" class="form-select form-select-sm w-auto">
+              <option value="All">All Types</option>
+              @foreach($employmentTypes as $type)
+                <option value="{{ $type->employment_type }}">{{ $type->employment_type }}</option>
+              @endforeach
+            </select>
+        </div>
       </div>
       <div class="card-body">
-        <div class="table-responsive">
-          <table class="table table-sm table-bordered">
-            <thead class="table-light">
-              <tr>
-                <th class="text-center" style="width: 40px;">
-                  <input type="checkbox" id="check-all-batches" class="form-check-input">
-                </th>
-                <th>Month/Year</th>
-                <th>Type</th>
-                <th>Salary ID</th>
-                <th class="text-center">Status</th>
-                <th class="text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="batch-table-body">
-            </tbody>
-          </table>
+        <ul class="nav nav-tabs mt-3" role="tablist">
+          <li class="nav-item">
+            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#navs-processing" role="tab" type="button">
+              Processing <span id="count-processing" class="badge rounded-pill bg-warning ms-1">0</span>
+            </button>
+          </li>
+          <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#navs-frozen" role="tab" type="button">
+              Frozen <span id="count-frozen" class="badge rounded-pill bg-success ms-1">0</span>
+            </button>
+          </li>
+        </ul>
+        <div class="tab-content px-0 pb-0">
+          <!-- Processing Tab -->
+          <div class="tab-pane fade show active" id="navs-processing" role="tabpanel">
+            <div class="table-responsive">
+              <table class="table table-sm table-bordered">
+                <thead class="table-light">
+                  <tr>
+                    <th class="text-center" style="width: 40px;">
+                      <input type="checkbox" id="check-all-processing" class="form-check-input check-all-batches">
+                    </th>
+                    <th>Month/Year</th>
+                    <th>Type</th>
+                    <th>Salary ID</th>
+                    <th class="text-center">Status</th>
+                    <th class="text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="batch-table-body-processing">
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Frozen Tab -->
+          <div class="tab-pane fade" id="navs-frozen" role="tabpanel">
+            <div class="table-responsive">
+              <table class="table table-sm table-bordered">
+                <thead class="table-light">
+                  <tr>
+                    <th class="text-center" style="width: 40px;">
+                      <input type="checkbox" id="check-all-frozen" class="form-check-input check-all-batches">
+                    </th>
+                    <th>Month/Year</th>
+                    <th>Type</th>
+                    <th>Salary ID</th>
+                    <th class="text-center">Status</th>
+                    <th class="text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="batch-table-body-frozen">
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
         <div class="form-text mt-3 text-info d-flex align-items-center">
           <i class="ti ti-info-circle ti-xs me-2"></i> 
-          <span>Tick bills to filter employees OR click a Salary ID to copy it to the form.</span>
+          <span>Tick bills to filter employees.</span>
         </div>
       </div>
     </div>
@@ -158,10 +213,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const employmentTypeSelect = document.getElementById('employment_type');
     
     const resultsDiv = document.getElementById('batch-results');
-    const tableBody = document.getElementById('batch-table-body');
-    const checkAll = document.getElementById('check-all-batches');
+    const tableBodyProcessing = document.getElementById('batch-table-body-processing');
+    const tableBodyFrozen = document.getElementById('batch-table-body-frozen');
+    const checkAllBtns = document.querySelectorAll('.check-all-batches');
     const addBillBtn = document.getElementById('btn-add-bill');
     const salaryIdInput = document.getElementById('default_salary_id');
+    const filterYear = document.getElementById('filter-year');
+    const filterType = document.getElementById('filter-type');
 
     // Modal elements
     const addBillModal = new bootstrap.Modal(document.getElementById('addBillModal'));
@@ -344,21 +402,29 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function renderBillsList(fetchedBatches = null) {
         if (fetchedBatches) {
-            // If we have fresh data from server, we cache it in a global or just redraw
             window.lastFetchedBatches = fetchedBatches;
         }
         
         const batches = window.lastFetchedBatches || [];
-        const month = monthSelect.value;
-        const year = yearSelect.value;
-        const employmentTypeName = employmentTypeSelect.options[employmentTypeSelect.selectedIndex].text;
+        
+        // Right side filters
+        const selectedYear = filterYear.value;
+        const selectedType = filterType.value;
 
-        tableBody.innerHTML = '';
-        checkAll.checked = false;
+        tableBodyProcessing.innerHTML = '';
+        tableBodyFrozen.innerHTML = '';
+        checkAllBtns.forEach(btn => btn.checked = false);
 
-        // 1. Render all fetched batches
+        let countProcessing = 0;
+        let countFrozen = 0;
+
+        // 1. Render batches
         if (batches.length > 0) {
             batches.forEach(batch => {
+                // Apply Right Side Filters
+                if (selectedYear !== 'All' && String(batch.year) !== String(selectedYear)) return;
+                if (selectedType !== 'All' && String(batch.employment_type) !== String(selectedType)) return;
+
                 const isFrozen = !!batch.is_frozen;
                 const statusBadge = isFrozen 
                     ? '<span class="badge bg-label-success">Frozen</span>' 
@@ -368,7 +434,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     ? `<a href="{{ route('pms.salary-management.resume-edit', $project_id) }}?salary_id=${encodeURIComponent(batch.salary_id)}"
                           class="btn btn-xs btn-warning py-0 px-2" style="font-size:11px;"
                           title="Reload this bill and continue editing">
-                          <i class="ti ti-edit me-1"></i>Edit / Continue
+                          <i class="ti ti-edit me-1"></i>Edit
                        </a>`
                     : '<span class="text-muted" style="font-size:11px;">—</span>';
                 
@@ -379,17 +445,27 @@ document.addEventListener('DOMContentLoaded', function() {
                         </td>
                         <td><small>${batch.paymonth} ${batch.year}</small></td>
                         <td><small>${batch.employment_type}</small></td>
-                        <td class="fw-semibold text-primary salary-id-link" style="cursor: pointer;" title="Click to use this ID">${batch.salary_id && batch.salary_id !== 'null' ? batch.salary_id : 'Unnamed Batch'}</td>
+                        <td class="fw-semibold">${batch.salary_id && batch.salary_id !== 'null' ? batch.salary_id : 'Unnamed Batch'}</td>
                         <td class="text-center">${statusBadge}</td>
                         <td class="text-center">${actionBtn}</td>
                     </tr>
                 `;
-                tableBody.insertAdjacentHTML('beforeend', row);
+                if (isFrozen) {
+                    tableBodyFrozen.insertAdjacentHTML('beforeend', row);
+                    countFrozen++;
+                } else {
+                    tableBodyProcessing.insertAdjacentHTML('beforeend', row);
+                    countProcessing++;
+                }
             });
         }
 
-        // 2. Render all draft bills for THIS period and THIS type
-        draftBills.filter(b => b.month === month && b.year === year && b.typeName === employmentTypeName).forEach(draft => {
+        // 2. Render draft bills (Processing - Draft)
+        draftBills.forEach(draft => {
+            // Apply Right Side Filters
+            if (selectedYear !== 'All' && String(draft.year) !== String(selectedYear)) return;
+            if (selectedType !== 'All' && String(draft.typeName) !== String(selectedType)) return;
+
             // Don't duplicate if already in fetched list
             if (batches.find(b => b.salary_id === draft.id)) return;
 
@@ -398,23 +474,33 @@ document.addEventListener('DOMContentLoaded', function() {
                     <td class="text-center">
                         <input type="checkbox" name="filter_salary_ids[]" value="${draft.id}" class="form-check-input batch-checkbox" checked>
                     </td>
-                    <td><small>${month} ${year}</small></td>
+                    <td><small>${draft.month} ${draft.year}</small></td>
                     <td><small>${draft.typeName}</small></td>
-                    <td class="fw-semibold text-primary salary-id-link" style="cursor: pointer;" title="Click to use this ID">${draft.id}</td>
-                    <td class="text-center"><span class="badge bg-label-info">New/Pending</span></td>
+                    <td class="fw-semibold">${draft.id}</td>
+                    <td class="text-center"><span class="badge bg-label-info">Draft</span></td>
+                    <td class="text-center"><span class="text-muted" style="font-size:11px;">—</span></td>
                 </tr>
             `;
-            tableBody.insertAdjacentHTML('afterbegin', row);
+            tableBodyProcessing.insertAdjacentHTML('afterbegin', row);
+            countProcessing++;
         });
 
-        if (tableBody.innerHTML === '') {
-            tableBody.innerHTML = '<tr><td colspan="5" class="text-center">No existing bills found for this period.</td></tr>';
+        // Handle empty states
+        if (tableBodyProcessing.innerHTML === '') {
+            tableBodyProcessing.innerHTML = '<tr><td colspan="6" class="text-center">No processing/draft bills found.</td></tr>';
         }
+        if (tableBodyFrozen.innerHTML === '') {
+            tableBodyFrozen.innerHTML = '<tr><td colspan="6" class="text-center">No frozen bills found.</td></tr>';
+        }
+
+        document.getElementById('count-processing').textContent = countProcessing;
+        document.getElementById('count-frozen').textContent = countFrozen;
     }
 
-    // Function to fetch bills
     function fetchBills() {
-        tableBody.innerHTML = '<tr><td colspan="5" class="text-center"><span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Fetching Bills...</td></tr>';
+        const loadingHtml = '<tr><td colspan="6" class="text-center"><span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Fetching Bills...</td></tr>';
+        tableBodyProcessing.innerHTML = loadingHtml;
+        tableBodyFrozen.innerHTML = loadingHtml;
         resultsDiv.classList.remove('d-none');
 
         const url = "{{ route('pms.salary-management.fetch-batches', $project_id) }}";
@@ -425,15 +511,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.success) {
                     renderBillsList(data.batches);
                 } else {
-                    tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Error loading bills.</td></tr>';
+                    const errHtml = '<tr><td colspan="6" class="text-center text-danger">Error loading bills.</td></tr>';
+                    tableBodyProcessing.innerHTML = errHtml;
+                    tableBodyFrozen.innerHTML = errHtml;
                 }
             })
             .catch(error => {
-                tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Unexpected error occurred.</td></tr>';
+                const errHtml = '<tr><td colspan="6" class="text-center text-danger">Unexpected error occurred.</td></tr>';
+                tableBodyProcessing.innerHTML = errHtml;
+                tableBodyFrozen.innerHTML = errHtml;
             });
     }
 
-    // Auto-fetch and re-validate on changes
+    // Auto-fetch and re-validate on changes from left form
     [monthSelect, yearSelect, employmentTypeSelect].forEach(el => {
         el.addEventListener('change', () => {
             fetchBills();
@@ -441,30 +531,24 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    // Handle Right-Side Filters (only re-render locally)
+    [filterYear, filterType].forEach(el => {
+        el.addEventListener('change', () => renderBillsList());
+    });
+
     // Initial load fetch
     fetchBills();
 
-    // Handle clicking on Salary ID to fill the input
-    tableBody.addEventListener('click', function(e) {
-        if (e.target.classList.contains('salary-id-link')) {
-            const idVal = e.target.textContent.trim();
-            salaryIdInput.value = (idVal === 'Unnamed Batch') ? '' : idVal;
-            
-            // Trigger the input event to run validation
-            salaryIdInput.dispatchEvent(new Event('input'));
-            
-            // Scroll to input for mobile users/long pages
-            salaryIdInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            
-            // If it was unnamed, focus it so they can type
-            if (idVal === 'Unnamed Batch') salaryIdInput.focus();
-        }
-    });
-
-    // Handle "Check All" functionality
-    checkAll.addEventListener('change', function() {
-        const checkboxes = tableBody.querySelectorAll('input[type="checkbox"]');
-        checkboxes.forEach(cb => cb.checked = this.checked);
+    // Handle "Check All" functionality for each tab
+    checkAllBtns.forEach(checkAll => {
+        checkAll.addEventListener('change', function() {
+            // Find the closest table and get its checkboxes
+            const closestTable = this.closest('table');
+            if (closestTable) {
+                const checkboxes = closestTable.querySelectorAll('.batch-checkbox');
+                checkboxes.forEach(cb => cb.checked = this.checked);
+            }
+        });
     });
 });
 </script>

@@ -279,8 +279,7 @@
           @php
           $array = ['text-white bg-primary', 'text-white bg-success', 'text-white bg-secondary', 'text-white bg-danger',
           'text-white bg-warning'];
-          // $array=[' btn-primary',' btn-outline-success',' btn-outline-secondary',' btn-outline-danger','
-          btn-outline-warning'];
+          // $array=[' btn-primary',' btn-outline-success',' btn-outline-secondary',' btn-outline-danger',' btn-outline-warning'];
 
           $index_old = $index;
           $index = array_rand($array);
