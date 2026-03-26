@@ -2,17 +2,40 @@
 
 @section('title', 'Salary Deduction Management - Frozen Employees')
 
+@section('vendor-style')
+<link rel="stylesheet" href="{{asset('assets/vendor/libs/animate-css/animate.css')}}" />
+<link rel="stylesheet" href="{{asset('assets/vendor/libs/sweetalert2/sweetalert2.css')}}" />
+@endsection
+
+@section('vendor-script')
+<script src="{{asset('assets/vendor/libs/sweetalert2/sweetalert2.js')}}"></script>
+@endsection
+
 @section('content')
+@php
+    $isSaved = session('success') ? true : false;
+@endphp
 <h4 class="fw-bold py-3 mb-4">
   <span class="text-muted fw-light">PMS / Salary Deduction Management /</span> Frozen Employees
 </h4>
 
+{{-- Success Message Alert --}}
+@if(session('success'))
+<div class="alert alert-success alert-dismissible fade show" role="alert">
+  <div class="d-flex">
+    <i class="ti ti-check me-2"></i>
+    <div>{{ session('success') }}</div>
+  </div>
+  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+@endif
+
 <div class="card mb-4">
     <div class="card-header border-bottom d-flex justify-content-between align-items-center">
         <div>
-            <h5 class="card-title mb-0">Step 2: Edit Deductions <span class="badge bg-success ms-2" style="font-size: 0.65rem;">Math V2 + Logging Active</span></h5>
+            <h5 class="card-title mb-0">Step 2: Edit Batch Deductions <span class="badge bg-success ms-2" style="font-size: 0.65rem;">Math V2 + Logging Active</span></h5>
             <small class="text-muted">
-                Displaying all active frozen employees across all months. Only deductions enabled in the employee's Salary Deduction Management profile are shown as editable.
+                Displaying employees belonging to the selected batch. Only deductions enabled in the employee's Salary Deduction Management profile are shown as editable.
             </small>
         </div>
         <div>
@@ -32,8 +55,13 @@
                 <p class="mb-0">There are no salary records that have been "Frozen" for this specific Month, Year, and Employment Type combination. Please ensure the salary cycle has been completed and frozen in Salary Management first.</p>
             </div>
         @else
-            <form action="{{ route('pms.deduction-master.store', $project_id) }}" method="POST">
+            <form action="{{ route('pms.deduction-master.store', $project_id) }}" method="POST" id="deduction-form">
                 @csrf
+                {{-- Batch Context Hidden Fields --}}
+                <input type="hidden" name="salary_id" value="{{ request('salary_id') }}">
+                <input type="hidden" name="month" value="{{ request('month') }}">
+                <input type="hidden" name="year" value="{{ request('year') }}">
+                <input type="hidden" name="employment_type" value="{{ request('employment_type') }}">
                 
                 <div class="table-responsive text-nowrap">
                     <table class="table table-bordered table-hover">
@@ -202,8 +230,8 @@
                                 <td style="min-width: 180px;" class="align-middle">
                                     @if($ded['flag'])
                                         <div class="input-group input-group-sm">
-                                            <input type="number" class="form-control text-end ded-val" data-target="{{ $ded['key'] }}" data-pid="{{ $payroll->p_id }}" value="{{ $ded['ui']['value'] }}" min="0" step="0.01">
-                                            <select class="form-select ded-type" data-target="{{ $ded['key'] }}" data-pid="{{ $payroll->p_id }}" style="max-width: 45px; padding: 0 5px;">
+                                            <input type="number" class="form-control text-end ded-val" data-target="{{ $ded['key'] }}" data-pid="{{ $payroll->p_id }}" value="{{ $ded['ui']['value'] }}" min="0" step="0.01" {{ $isSaved ? 'disabled' : '' }}>
+                                            <select class="form-select ded-type" data-target="{{ $ded['key'] }}" data-pid="{{ $payroll->p_id }}" style="max-width: 45px; padding: 0 5px;" {{ $isSaved ? 'disabled' : '' }}>
                                                 <option value="amount" {{ $ded['ui']['type'] == 'amount' ? 'selected' : '' }}>₹</option>
                                                 <option value="percentage" {{ $ded['ui']['type'] == 'percentage' ? 'selected' : '' }}>%</option>
                                             </select>
@@ -216,45 +244,44 @@
                                     @endif
                                 </td>
                                 @endforeach
-
                                 <td class="text-center align-middle" style="background-color: #f8f9fa;">
-                                    <input type="number" name="medisep[{{ $index }}]" class="form-control form-control-sm text-end attr-medisep bg-white" value="{{ $uiMedisep['amt'] }}" style="min-width: 90px; border-color: #6c757d;" min="0" step="0.01">
+                                    <input type="number" name="medisep[{{ $index }}]" class="form-control form-control-sm text-end attr-medisep bg-white" value="{{ $uiMedisep['amt'] }}" style="min-width: 90px; border-color: #6c757d;" min="0" step="0.01" {{ $isSaved ? 'disabled' : '' }}>
                                 </td>
                                 <td class="text-center align-middle" style="background-color: #f8f9fa;">
-                                    <input type="number" name="gpf[{{ $index }}]" class="form-control form-control-sm text-end attr-gpf bg-white" value="{{ $uiGpf['amt'] }}" style="min-width: 90px; border-color: #6c757d;" min="0" step="0.01">
+                                    <input type="number" name="gpf[{{ $index }}]" class="form-control form-control-sm text-end attr-gpf bg-white" value="{{ $uiGpf['amt'] }}" style="min-width: 90px; border-color: #6c757d;" min="0" step="0.01" {{ $isSaved ? 'disabled' : '' }}>
                                 </td>
                                 <td class="text-center align-middle" style="background-color: #f8f9fa;">
-                                    <input type="number" name="sli1[{{ $index }}]" class="form-control form-control-sm text-end attr-sli1 bg-white" value="{{ $uiSli1['amt'] }}" style="min-width: 90px; border-color: #6c757d;" min="0" step="0.01">
+                                    <input type="number" name="sli1[{{ $index }}]" class="form-control form-control-sm text-end attr-sli1 bg-white" value="{{ $uiSli1['amt'] }}" style="min-width: 90px; border-color: #6c757d;" min="0" step="0.01" {{ $isSaved ? 'disabled' : '' }}>
                                 </td>
                                 <td class="text-center align-middle" style="background-color: #f8f9fa;">
-                                    <input type="number" name="sli2[{{ $index }}]" class="form-control form-control-sm text-end attr-sli2 bg-white" value="{{ $uiSli2['amt'] }}" style="min-width: 90px; border-color: #6c757d;" min="0" step="0.01">
+                                    <input type="number" name="sli2[{{ $index }}]" class="form-control form-control-sm text-end attr-sli2 bg-white" value="{{ $uiSli2['amt'] }}" style="min-width: 90px; border-color: #6c757d;" min="0" step="0.01" {{ $isSaved ? 'disabled' : '' }}>
                                 </td>
                                 <td class="text-center align-middle" style="background-color: #f8f9fa;">
-                                    <input type="number" name="sli3[{{ $index }}]" class="form-control form-control-sm text-end attr-sli3 bg-white" value="{{ $uiSli3['amt'] }}" style="min-width: 90px; border-color: #6c757d;" min="0" step="0.01">
+                                    <input type="number" name="sli3[{{ $index }}]" class="form-control form-control-sm text-end attr-sli3 bg-white" value="{{ $uiSli3['amt'] }}" style="min-width: 90px; border-color: #6c757d;" min="0" step="0.01" {{ $isSaved ? 'disabled' : '' }}>
                                 </td>
                                 <td class="text-center align-middle" style="background-color: #f8f9fa;">
-                                    <input type="number" name="gis[{{ $index }}]" class="form-control form-control-sm text-end attr-gis bg-white" value="{{ $uiGis['amt'] }}" style="min-width: 90px; border-color: #6c757d;" min="0" step="0.01">
+                                    <input type="number" name="gis[{{ $index }}]" class="form-control form-control-sm text-end attr-gis bg-white" value="{{ $uiGis['amt'] }}" style="min-width: 90px; border-color: #6c757d;" min="0" step="0.01" {{ $isSaved ? 'disabled' : '' }}>
                                 </td>
                                 <td class="text-center align-middle" style="background-color: #f8f9fa;">
-                                    <input type="number" name="gpais[{{ $index }}]" class="form-control form-control-sm text-end attr-gpais bg-white" value="{{ $uiGpais['amt'] }}" style="min-width: 90px; border-color: #6c757d;" min="0" step="0.01">
-                                </td>
-
-                                <td class="text-center align-middle" style="background-color: #f8f9fa;">
-                                    <input type="number" name="professional_tax[{{ $index }}]" class="form-control form-control-sm text-end attr-professional-tax bg-white" value="{{ $uiPt['amt'] }}" style="min-width: 90px; border-color: #7367f0;" min="0" step="0.01" title="Value from Pay Item Master (editable)">
+                                    <input type="number" name="gpais[{{ $index }}]" class="form-control form-control-sm text-end attr-gpais bg-white" value="{{ $uiGpais['amt'] }}" style="min-width: 90px; border-color: #6c757d;" min="0" step="0.01" {{ $isSaved ? 'disabled' : '' }}>
                                 </td>
                                 <td class="text-center align-middle" style="background-color: #f8f9fa;">
-                                    <input type="number" name="festival_allowance[{{ $index }}]" class="form-control form-control-sm text-end attr-festival-allowance bg-white" value="{{ $uiFa['amt'] }}" style="min-width: 90px; border-color: #28c76f;" min="0" step="0.01" title="Value from Pay Item Master (editable)">
+                                    <input type="number" name="professional_tax[{{ $index }}]" class="form-control form-control-sm text-end attr-professional-tax bg-white" value="{{ $uiPt['amt'] }}" style="min-width: 90px; border-color: #7367f0;" min="0" step="0.01" title="Value from Pay Item Master (editable)" {{ $isSaved ? 'disabled' : '' }}>
                                 </td>
                                 <td class="text-center align-middle" style="background-color: #f8f9fa;">
-                                    <input type="number" name="bonus[{{ $index }}]" class="form-control form-control-sm text-end attr-bonus bg-white" value="{{ $uiBonus['amt'] }}" style="min-width: 90px; border-color: #ff9f43;" min="0" step="0.01" title="Value from Pay Item Master (editable)">
+                                    <input type="number" name="festival_allowance[{{ $index }}]" class="form-control form-control-sm text-end attr-festival-allowance bg-white" value="{{ $uiFa['amt'] }}" style="min-width: 90px; border-color: #28c76f;" min="0" step="0.01" title="Value from Pay Item Master (editable)" {{ $isSaved ? 'disabled' : '' }}>
                                 </td>
+                                <td class="text-center align-middle" style="background-color: #f8f9fa;">
+                                    <input type="number" name="bonus[{{ $index }}]" class="form-control form-control-sm text-end attr-bonus bg-white" value="{{ $uiBonus['amt'] }}" style="min-width: 90px; border-color: #ff9f43;" min="0" step="0.01" title="Value from Pay Item Master (editable)" {{ $isSaved ? 'disabled' : '' }}>
+                                </td>
+    </td>
 
                                 @foreach($otherDeduction as $ded)
                                 <td style="min-width: 180px;" class="align-middle">
                                     @if($ded['flag'])
                                         <div class="input-group input-group-sm">
-                                            <input type="number" class="form-control text-end ded-val" data-target="{{ $ded['key'] }}" data-pid="{{ $payroll->p_id }}" value="{{ $ded['ui']['value'] }}" min="0" step="0.01">
-                                            <select class="form-select ded-type" data-target="{{ $ded['key'] }}" data-pid="{{ $payroll->p_id }}" style="max-width: 45px; padding: 0 5px;">
+                                            <input type="number" class="form-control text-end ded-val" data-target="{{ $ded['key'] }}" data-pid="{{ $payroll->p_id }}" value="{{ $ded['ui']['value'] }}" min="0" step="0.01" {{ $isSaved ? 'disabled' : '' }}>
+                                            <select class="form-select ded-type" data-target="{{ $ded['key'] }}" data-pid="{{ $payroll->p_id }}" style="max-width: 45px; padding: 0 5px;" {{ $isSaved ? 'disabled' : '' }}>
                                                 <option value="amount" {{ $ded['ui']['type'] == 'amount' ? 'selected' : '' }}>₹</option>
                                                 <option value="percentage" {{ $ded['ui']['type'] == 'percentage' ? 'selected' : '' }}>%</option>
                                             </select>
@@ -288,21 +315,21 @@
                                             <span class="badge bg-label-warning" title="Pending"><i class="ti ti-clock ti-xs"></i></span>
                                         @endif
                                         
-                                        <div class="btn-group">
+                                        <div class="btn-group {{ $isSaved ? '' : 'disabled' }}" {!! $isSaved ? '' : 'style="pointer-events: none; opacity: 0.5;"' !!}>
                                             <a href="{{ route('pms.deduction-master.salary-slip', [$payroll->p_id, $payroll->paymonth, $payroll->year]) }}" 
                                                class="btn btn-sm btn-icon btn-label-primary" 
                                                target="_blank" 
-                                               title="View Salary Slip">
+                                               title="{{ $isSaved ? 'View Salary Slip' : 'Please save to view' }}">
                                                 <i class="ti ti-eye"></i>
                                             </a>
                                             <a href="{{ route('pms.deduction-master.salary-slip-pdf', [$payroll->p_id, $payroll->paymonth, $payroll->year]) }}" 
                                                class="btn btn-sm btn-icon btn-label-danger" 
-                                               title="Download PDF">
+                                               title="{{ $isSaved ? 'Download PDF' : 'Please save to download' }}">
                                                 <i class="ti ti-file-type-pdf"></i>
                                             </a>
                                             <a href="{{ route('pms.deduction-master.salary-slip-word', [$payroll->p_id, $payroll->paymonth, $payroll->year]) }}" 
                                                class="btn btn-sm btn-icon btn-label-info" 
-                                               title="Download Word">
+                                               title="{{ $isSaved ? 'Download Word' : 'Please save to download' }}">
                                                 <i class="ti ti-file-text"></i>
                                             </a>
                                         </div>
@@ -314,8 +341,15 @@
                     </table>
                 </div>
 
-            <div class="mt-4 text-end">
-                <button type="submit" class="btn btn-primary" title="Save Deductions">Save & Proceed</button>
+            <div class="mt-4 d-flex justify-content-between">
+                <a href="{{ route('pms.deduction-master.index', $project_id) }}" class="btn btn-{{ $isSaved ? 'primary' : 'label-secondary' }}">
+                    <i class="ti ti-arrow-left me-1"></i> Return to Batch List
+                </a>
+                @if(!$isSaved)
+                    <button type="submit" class="btn btn-success" id="btn-save-deductions" title="Save Deductions">
+                        <i class="ti ti-device-floppy me-1"></i> Save & Proceed
+                    </button>
+                @endif
             </div>
             </form>
         @endif
@@ -437,6 +471,28 @@ $(document).ready(function() {
     });
 
     // Display initial DB values unmodified until the user manually inputs a value.
+
+    // --- FORM SUBMISSION WITH CONFIRMATION ---
+    $('#btn-save-deductions').on('click', function(e) {
+        e.preventDefault();
+        
+        Swal.fire({
+            title: 'Save Deduction Changes?',
+            text: "This will update the payroll records and recalculate the Net Salary for all employees in this batch.",
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#7367f0',
+            cancelButtonColor: '#a8aaae',
+            confirmButtonText: 'Yes, Save it!',
+            cancelButtonText: 'Wait, let me check'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // Show loading state
+                $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1" role="status"></span> Saving...');
+                $('#deduction-form').submit();
+            }
+        });
+    });
 });
 </script>
 @endsection

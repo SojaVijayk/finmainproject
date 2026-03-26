@@ -12,29 +12,34 @@ class RolePermissionController extends Controller
     public function index()
     {
         $pageConfigs = ['myLayout' => 'blank'];
-        $role = Role::create(['name' => 'writer']);
 
+        // Example: create role and permission
+        $role = Role::create(['name' => 'writer']);
+        $permission = Permission::create(['name' => 'edit articles']);
+
+        // Assign permissions to roles and vice versa
         $role->givePermissionTo($permission);
         $permission->assignRole($role);
 
-        $role->syncPermissions($permissions);
-        $permission->syncRoles($roles);
+        $roles = $role->permissions; // roles collection (example)
+        $permissions = $permission->roles; // permissions collection (example)
+
+        $role->syncPermissions([$permission]);
+        $permission->syncRoles([$role]);
 
         $role->revokePermissionTo($permission);
         $permission->removeRole($role);
-        $permission = Permission::create(['name' => 'edit articles']);
 
         // get a list of all permissions directly assigned to the user
-        $permissionNames = $user->getPermissionNames(); // collection of name strings
-        $permissions = $user->permissions; // collection of permission objects
-
-        // get all permissions for the user, either directly, or from roles, or from both
-        $permissions = $user->getDirectPermissions();
-        $permissions = $user->getPermissionsViaRoles();
-        $permissions = $user->getAllPermissions();
-
-        // get the names of the user's roles
-        $roles = $user->getRoleNames(); // Returns a collection
+        $user = auth()->user();
+        if ($user) {
+            $permissionNames = $user->getPermissionNames();
+            $permissions = $user->permissions;
+            $permissions = $user->getDirectPermissions();
+            $permissions = $user->getPermissionsViaRoles();
+            $permissions = $user->getAllPermissions();
+            $roles = $user->getRoleNames();
+        }
 
         return view('content.authentications.auth-login-cover', ['pageConfigs' => $pageConfigs]);
     }

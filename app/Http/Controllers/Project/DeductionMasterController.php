@@ -17,30 +17,31 @@ class DeductionMasterController extends Controller
             $project_id = 1;
         }
         
-        // Fetch ALL frozen payroll records across all months/years/types for this specific project
-        $frozenPayrolls = \DB::table('employee_payroll')
+        // Fetch UNIQUE frozen batches (bills) for this specific project
+        $frozenBatches = DB::table('employee_payroll')
             ->join('project_employee', 'project_employee.p_id', '=', 'employee_payroll.p_id')
             ->join('service', 'service.p_id', '=', 'employee_payroll.p_id')
             ->where('employee_payroll.is_frozen', 1)
-            ->whereRaw('service.id = (SELECT MAX(id) FROM service WHERE service.p_id = employee_payroll.p_id)');
-
-        if ($project_id) {
-            $frozenPayrolls->where('project_employee.project_id', $project_id);
-        }
-
-        $frozenPayrolls = $frozenPayrolls->select(
-                'employee_payroll.*',
-                'project_employee.name',
-                'service.employment_type'
+            ->where('project_employee.project_id', $project_id)
+            ->where(function ($q) {
+                // Ensure we link to the most relevant service record
+                $q->whereRaw('service.id = (SELECT MAX(id) FROM service s2 WHERE s2.p_id = employee_payroll.p_id AND s2.status = 1)')
+                  ->orWhereRaw('service.id = (SELECT MAX(id) FROM service s2 WHERE s2.p_id = employee_payroll.p_id)');
+            })
+            ->select(
+                'employee_payroll.paymonth',
+                'employee_payroll.year',
+                'service.employment_type',
+                DB::raw("COALESCE(NULLIF(employee_payroll.salary_id, ''), 'Unnamed Batch') as salary_id"),
+                DB::raw('COUNT(employee_payroll.p_id) as employee_count'),
+                DB::raw('SUM(employee_payroll.net_salary) as total_net')
             )
+            ->groupBy('employee_payroll.year', 'employee_payroll.paymonth', 'service.employment_type', 'employee_payroll.salary_id')
             ->orderBy('employee_payroll.year', 'desc')
-            ->orderBy('employee_payroll.paymonth', 'desc')
+            ->orderByRaw("FIELD(employee_payroll.paymonth,'December','November','October','September','August','July','June','May','April','March','February','January')")
             ->get();
 
-        // The user wants to see specifically: Name, Month, Year, Employment Type, and Salary ID.
-        // We will pass this structured payload back to the index view.
-
-        return view('content.projects.deduction-master.index', compact('frozenPayrolls', 'pageConfigs', 'project_id'));
+        return view('content.projects.deduction-master.index', compact('frozenBatches', 'pageConfigs', 'project_id'));
     }
 
     public function selectEmployees(Request $request, $project_id = null)
@@ -51,36 +52,51 @@ class DeductionMasterController extends Controller
             $project_id = 1;
         }
 
-        // Fetch ALL frozen payroll records, joining with service, project_employee, and deduction_masters
-        $frozenPayrolls = \DB::table('employee_payroll')
+        // --- Batch Filtering Logic ---
+        // If coming from the new "View Batch" link, parameters will be in the Request (GET/POST)
+        $batchId = $request->salary_id;
+        $batchMonth = $request->month;
+        $batchYear = $request->year;
+        $batchEmploymentType = $request->employment_type;
+
+        // Fetch frozen payroll records, joining with service, project_employee, and deduction_masters
+        $frozenPayrollsQuery = DB::table('employee_payroll')
             ->join('project_employee', 'project_employee.p_id', '=', 'employee_payroll.p_id')
             ->leftJoin('designations', 'designations.id', '=', 'project_employee.designation_id')
             ->leftJoin('service', function($join) {
-                // Join only the most recent service record per employee to prevent duplicate rows
+                // Join only the current service record per employee
                 $join->on('service.p_id', '=', 'employee_payroll.p_id')
                      ->whereRaw('service.id = (SELECT MAX(s2.id) FROM service s2 WHERE s2.p_id = employee_payroll.p_id)');
             })
-            ->leftJoin('deduction_masters', 'deduction_masters.p_id', '=', 'employee_payroll.p_id');
+            ->leftJoin('deduction_masters', 'deduction_masters.p_id', '=', 'employee_payroll.p_id')
+            ->where('employee_payroll.is_frozen', 1);
 
         if ($project_id) {
-            $frozenPayrolls->where('project_employee.project_id', $project_id);
+            $frozenPayrollsQuery->where('project_employee.project_id', $project_id);
         }
 
-        // Apply filters if present; otherwise show all frozen records for the project
-        if ($request->filled('month')) {
-            $frozenPayrolls->where('employee_payroll.paymonth', $request->month);
+        // Apply filters
+        if ($batchId) {
+            // Handle 'Unnamed Batch' placeholder
+            if ($batchId === 'Unnamed Batch') {
+                $frozenPayrollsQuery->where(function($q) {
+                    $q->whereNull('employee_payroll.salary_id')->orWhere('employee_payroll.salary_id', '');
+                });
+            } else {
+                $frozenPayrollsQuery->where('employee_payroll.salary_id', $batchId);
+            }
         }
-        if ($request->filled('year')) {
-            $frozenPayrolls->where('employee_payroll.year', $request->year);
+        if ($batchMonth) {
+            $frozenPayrollsQuery->where('employee_payroll.paymonth', $batchMonth);
         }
-        if ($request->filled('employment_type')) {
-            $frozenPayrolls->where('service.employment_type', $request->employment_type);
+        if ($batchYear) {
+            $frozenPayrollsQuery->where('employee_payroll.year', $batchYear);
+        }
+        if ($batchEmploymentType) {
+            $frozenPayrollsQuery->where('service.employment_type', $batchEmploymentType);
         }
 
-        // Strictly show only frozen records as per user request
-        $frozenPayrolls->where('employee_payroll.is_frozen', 1);
-
-        $frozenPayrolls = $frozenPayrolls->select(
+        $frozenPayrolls = $frozenPayrollsQuery->select(
                 'employee_payroll.*',
                 'employee_payroll.gross_salary as frozen_gross_salary',
                 'employee_payroll.total_working_days as frozen_total_working_days',
@@ -366,7 +382,13 @@ class DeductionMasterController extends Controller
                 ]);
         }
 
-        return redirect()->route('pms.deduction-master.index', $project_id)->with('success', 'Deductions successfully updated and Net Salary recalculated!');
+        return redirect()->route('pms.deduction-master.select-employees', [
+            'project_id'      => $project_id,
+            'salary_id'       => $request->salary_id,
+            'month'           => $request->month,
+            'year'            => $request->year,
+            'employment_type' => $request->employment_type
+        ])->with('success', 'Deductions successfully updated and Net Salary recalculated! You can now view or download the updated salary slips.');
     }
     public function generateSalarySlip(Request $request, $id, $month, $year)
     {

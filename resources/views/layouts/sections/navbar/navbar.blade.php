@@ -443,7 +443,7 @@ $navbarDetached = ($navbarDetached ?? '');
                   <span class="align-middle">Team Settings</span>
                 </a>
               </li>
-              @can('create', Laravel\Jetstream\Jetstream::newTeamModel())
+              @can('create', App\Models\Team::class)
               <li>
                 <a class="dropdown-item" href="{{ route('teams.create') }}">
                   <i class='ti ti-user me-2'></i>

@@ -1778,7 +1778,7 @@ private function countHolidays($start, $end, $holidays)
             ->with('success', 'Export functionality will be implemented soon.');
     }
 
-    private function applyDateRangeFilter($query, $dateRange)
+    private function applyDateRangeFilter($query, $dateRange, $request = null)
     {
         switch ($dateRange) {
             case 'this_week':
