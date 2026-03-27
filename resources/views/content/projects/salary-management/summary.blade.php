@@ -116,7 +116,7 @@
               <td>{{ !empty($data['ifsc_code']) ? $data['ifsc_code'] : 'N/A' }}</td>
               <td class="text-end">₹{{ number_format($data['base_salary'], 2) }}</td>
               <td class="text-end">₹{{ number_format($data['employer_contribution'], 2) }}</td>
-              <td class="text-end fw-bold text-primary">₹{{ number_format($data['total_salary'], 2) }}</td>
+              <td class="text-end fw-bold text-primary individual-salary-display">₹{{ number_format($data['total_salary'], 2) }}</td>
             </tr>
             @php $grandTotal += $data['total_salary']; @endphp
             @endforeach
@@ -273,6 +273,18 @@
           </div>
           <div class="col-md-6 mb-2">
             <div class="form-check">
+              <input class="form-check-input column-chk" type="checkbox" value="admin_charge" id="col_admin_charge" checked>
+              <label class="form-check-label" for="col_admin_charge">Service/Admin Charge</label>
+            </div>
+          </div>
+          <div class="col-md-6 mb-2">
+            <div class="form-check">
+              <input class="form-check-input column-chk" type="checkbox" value="gst" id="col_gst_col" checked>
+              <label class="form-check-label" for="col_gst_col">GST</label>
+            </div>
+          </div>
+          <div class="col-md-6 mb-2">
+            <div class="form-check">
               <input class="form-check-input column-chk" type="checkbox" value="payable" id="col_payable" checked>
               <label class="form-check-label" for="col_payable">Payable Remuneration</label>
             </div>
@@ -280,7 +292,7 @@
           <div class="col-md-6 mb-2">
             <div class="form-check">
               <input class="form-check-input" type="checkbox" id="col_gst_include" {{ (isset($pendingData['include_gst']) && $pendingData['include_gst'] == '0') ? '' : 'checked' }}>
-              <label class="form-check-label" for="col_gst_include">Include GST Deduction</label>
+              <label class="form-check-label" for="col_gst_include">Include GST Calculation</label>
             </div>
           </div>
         </div>
@@ -313,24 +325,57 @@ $(function() {
     // Calculate Grand Total logic
     function calculateGrandTotal() {
         var baseTotal = 0;
-        $('.row-checkbox:checked').each(function() {
-            var row = $(this).closest('tr');
-            var salary = parseFloat(row.find('.hidden-inputs input[name="total_salary[]"]').val()) || 0;
-            var empContrib = parseFloat(row.find('.hidden-inputs input[name="employer_contribution[]"]').val()) || 0;
-            baseTotal += (salary + empContrib);
-        });
+        var totalAdminAmount = 0;
+        var totalGstAmount = 0;
+        var grandTotal = 0;
+        var empContribTotal = 0;
 
         var adminPercent = parseFloat($('#admin_charge_percent').val()) || 0;
-        var adminAmount = (baseTotal * adminPercent) / 100;
-        
         var gstPercent = parseFloat($('#gst_percent').val()) || 0;
-        var gstAmount = (baseTotal * gstPercent) / 100;
 
-        var grandTotal = baseTotal - adminAmount - gstAmount;
+        // Iterate over all rows to update their individual display
+        $('.employee-row').each(function() {
+            var row = $(this);
+            var isChecked = row.find('.row-checkbox').is(':checked');
+            var isFrozen = row.hasClass('table-secondary'); // Frozen rows are distinct
+
+            if (!isFrozen) {
+                var salary = parseFloat(row.find('.hidden-inputs input[name="total_salary[]"]').val()) || 0;
+                var empContrib = parseFloat(row.find('.hidden-inputs input[name="employer_contribution[]"]').val()) || 0;
+                
+                // Deduct percentage from individual salary
+                var rowAdminAmount = (salary * adminPercent) / 100;
+                var rowGstAmount = (salary * gstPercent) / 100;
+                var rowNet = salary - rowAdminAmount - rowGstAmount;
+
+                // Update row display
+                var displaySpan = row.find('.individual-salary-display');
+                if (displaySpan.length) {
+                    displaySpan.text('₹' + rowNet.toFixed(2));
+                }
+
+                if (isChecked) {
+                    baseTotal += salary;
+                    empContribTotal += empContrib;
+                    totalAdminAmount += rowAdminAmount;
+                    totalGstAmount += rowGstAmount;
+                    grandTotal += rowNet;
+                }
+            } else {
+                // If frozen, just add to grand total if it happens to be checked (disabled usually means not submitted, but just in case)
+                if (isChecked) {
+                    // Extract value from text if it's frozen, or it could be skipped since frozen rows aren't submitted this way
+                }
+            }
+        });
+
+        // Add employer contribution to the base and grand totals to match previous billing logic
+        baseTotal += empContribTotal;
+        grandTotal += empContribTotal;
 
         $('#total_salary_sum').text('₹' + baseTotal.toFixed(2));
-        $('#admin_charge_amount').text('₹' + adminAmount.toFixed(2));
-        $('#gst_amount_display').text('₹' + gstAmount.toFixed(2));
+        $('#admin_charge_amount').text('₹' + totalAdminAmount.toFixed(2));
+        $('#gst_amount_display').text('₹' + totalGstAmount.toFixed(2));
         $('#grand_total_amount').text('₹' + grandTotal.toFixed(2));
     }
 

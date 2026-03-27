@@ -166,20 +166,7 @@ class ProjectEmployeeController extends Controller
     $payTypes = \App\Models\PayType::where('status', 1)->get();
     $masterDeductions = \App\Models\MasterDynamicDeduction::where('status', 1)->get();
 
-    $serviceRoles = [
-        'coordinator',
-        'it',
-        'finance',
-        'accounts',
-        'deputation offier',
-        'jd',
-        'Project Investigator',
-        'Team Leader',
-        'HR manager',
-        'Professor'
-    ];
-
-    return view('content.projects.employee-details-v2', compact('employee', 'pageConfigs', 'designations', 'user_types', 'employmentTypes', 'payTypes', 'masterDeductions', 'serviceRoles'));
+    return view('content.projects.employee-details-v2', compact('employee', 'pageConfigs', 'designations', 'user_types', 'employmentTypes', 'payTypes', 'masterDeductions'));
   }
 
     public function updateMaster(Request $request, $id)
@@ -242,7 +229,7 @@ class ProjectEmployeeController extends Controller
           'role' => 'required',
           'employment_type' => 'required',
           'pay_type' => 'required',
-          'consolidated_pay' => 'required|numeric',
+          'consolidated_pay' => 'required_unless:employment_type,Deputation|nullable|numeric',
           'basic_pay' => 'required_if:employment_type,Deputation|nullable|numeric',
           'da' => 'required_if:employment_type,Deputation|nullable|numeric',
           'hra' => 'required_if:employment_type,Deputation|nullable|numeric',

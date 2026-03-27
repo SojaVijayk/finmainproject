@@ -695,6 +695,8 @@ Route::group(['middleware' => 'auth'], function () {
       Route::get('/deduction-master/salary-slip/{id}/{month}/{year}', [DeductionMasterController::class, 'generateSalarySlip'])->name('deduction-master.salary-slip');
       Route::get('/deduction-master/salary-slip/pdf/{id}/{month}/{year}', [DeductionMasterController::class, 'downloadSalarySlipPdf'])->name('deduction-master.salary-slip-pdf');
       Route::get('/deduction-master/salary-slip/word/{id}/{month}/{year}', [DeductionMasterController::class, 'downloadSalarySlipWord'])->name('deduction-master.salary-slip-word');
+      Route::get('/deduction-master/statement-preview/{project_id?}', [DeductionMasterController::class, 'statementPreview'])->name('deduction-master.statement-preview');
+      Route::get('/deduction-master/statement-export/{project_id?}', [DeductionMasterController::class, 'downloadStatementExcel'])->name('deduction-master.statement-export');
       Route::match(['get', 'post'], '/deduction-master/select-employees/{project_id?}', [DeductionMasterController::class, 'selectEmployees'])->name('deduction-master.select-employees');
       Route::post('/deduction-master/store/{project_id?}', [DeductionMasterController::class, 'storeDeductions'])->name('deduction-master.store');
 

@@ -422,8 +422,9 @@ class SalaryManagementController extends Controller
 
         // Batch Fetch Leaves for all employees
         $pIds = $employees->pluck('p_id');
+        $userIds = $employees->pluck('user_id')->filter();
         $allLeaves = \DB::table('leave_request_details')
-            ->whereIn('user_id', $pIds)
+            ->whereIn('user_id', $userIds)
             ->where('status', 1) // Approved
             ->whereBetween('date', [$monthStartStr, $monthEndStr])
             ->select('user_id', 'leave_type_id', \DB::raw('SUM(leave_duration) as total_days'))
@@ -433,7 +434,7 @@ class SalaryManagementController extends Controller
 
         // Map leaves to employees
         foreach ($employees as $employee) {
-            $leaveStats = $allLeaves->get($employee->p_id, collect())->pluck('total_days', 'leave_type_id');
+            $leaveStats = $allLeaves->get($employee->user_id, collect())->pluck('total_days', 'leave_type_id');
 
             $employee->cl_days = $leaveStats[1] ?? 0;
             $employee->sl_days = $leaveStats[2] ?? 0;
@@ -968,6 +969,16 @@ class SalaryManagementController extends Controller
         $startDateStr = $mStart->format('d.m.Y');
         $endDateStr = $mEnd->format('d.m.Y');
 
+        $isFrozenBatch = false;
+        if ($payrolls->isNotEmpty()) {
+            $isFrozenBatch = (bool) $payrolls->first()->is_frozen;
+        }
+
+        $globalAdminChargePercent = (float)$request->query('admin_charge', 0);
+        $globalGstChargePercent = (float)$request->query('gst_charge', 0);
+        $globalIncludeGst = $request->query('include_gst', '1') == '1';
+        if (!$globalIncludeGst) $globalGstChargePercent = 0;
+
         foreach ($payrolls as $payroll) {
             // Check Project
             $emp = \App\Models\ProjectEmployee::where('p_id', $payroll->p_id)
@@ -990,8 +1001,8 @@ class SalaryManagementController extends Controller
             if (!$service) continue;
 
             // Calculate Remuneration (Prorated Base)
-            $net = $payroll->net_salary;
-            $arrear = $payroll->other_allowance;
+            $net = (float)$payroll->net_salary;
+            $arrear = (float)$payroll->other_allowance;
             $employer_contribution = $payroll->employer_contribution ?? 0;
             $employee_contribution = $payroll->employee_contribution ?? 0; // NEW
             $epf = $payroll->epf ?? 0; // NEW
@@ -1000,9 +1011,30 @@ class SalaryManagementController extends Controller
             $pf = $payroll->pf ?? 0;
             $doj = $emp->date_of_joining ? \Carbon\Carbon::parse($emp->date_of_joining)->format('d-m-Y') : '-';
             
+            $adminChargePercent = $isFrozenBatch ? (float)($payroll->admin_charge_percent ?? 0) : $globalAdminChargePercent;
+            $gstChargePercent = $isFrozenBatch ? (float)($payroll->gst_percent ?? 0) : $globalGstChargePercent;
+
+            $totalChargePercent = $adminChargePercent + $gstChargePercent;
+            $individualAdminCharge = 0;
+            $individualGst = 0;
+            $originalNet = $net;
+            $payable = $net;
+
+            if ($totalChargePercent > 0) {
+                if ($isFrozenBatch) {
+                    $originalNet = $net / (1 - ($totalChargePercent / 100));
+                    $individualAdminCharge = $originalNet * ($adminChargePercent / 100);
+                    $individualGst = $originalNet * ($gstChargePercent / 100);
+                } else {
+                    $individualAdminCharge = $net * ($adminChargePercent / 100);
+                    $individualGst = $net * ($gstChargePercent / 100);
+                    $payable = $net - $individualAdminCharge - $individualGst;
+                }
+            }
+
             // Remuneration is fundamentally the Net Pay minus any added Arrears, 
             // since deductions are no longer actively recorded or subtracted.
-            $remuneration = round($net - $arrear, 2);
+            $remuneration = round($originalNet - $arrear, 2);
 
             $statementData[] = (object)[
                 'name' => $emp->name,
@@ -1017,15 +1049,13 @@ class SalaryManagementController extends Controller
                 'deductions' => 0, // No active deductions
                 'employee_contribution' => $employee_contribution, // NEW
                 'employer_contribution' => $employer_contribution,
-                'payable' => $net
+                'admin_charge' => $individualAdminCharge,
+                'gst' => $individualGst,
+                'payable' => $payable
             ];
         }
 
-        // Determine if this batch is frozen (all records in a batch have the same frozen status)
-        $isFrozenBatch = false;
-        if ($payrolls->isNotEmpty()) {
-            $isFrozenBatch = (bool) $payrolls->first()->is_frozen;
-        }
+        // Removed old isFrozenBatch location
 
         if ($request->query('format') === 'pdf') {
             $pdf = Pdf::loadView('content.projects.salary-management.salary-statement', compact('statementData', 'month', 'year', 'pageConfigs', 'project', 'columns', 'startDateStr', 'endDateStr', 'note', 'employmentType', 'isFrozenBatch'))

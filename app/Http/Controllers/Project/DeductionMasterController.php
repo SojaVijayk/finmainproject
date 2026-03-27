@@ -17,31 +17,37 @@ class DeductionMasterController extends Controller
             $project_id = 1;
         }
         
-        // Fetch UNIQUE frozen batches (bills) for this specific project
-        $frozenBatches = DB::table('employee_payroll')
-            ->join('project_employee', 'project_employee.p_id', '=', 'employee_payroll.p_id')
-            ->join('service', 'service.p_id', '=', 'employee_payroll.p_id')
-            ->where('employee_payroll.is_frozen', 1)
-            ->where('project_employee.project_id', $project_id)
-            ->where(function ($q) {
-                // Ensure we link to the most relevant service record
-                $q->whereRaw('service.id = (SELECT MAX(id) FROM service s2 WHERE s2.p_id = employee_payroll.p_id AND s2.status = 1)')
-                  ->orWhereRaw('service.id = (SELECT MAX(id) FROM service s2 WHERE s2.p_id = employee_payroll.p_id)');
-            })
-            ->select(
-                'employee_payroll.paymonth',
-                'employee_payroll.year',
-                'service.employment_type',
-                DB::raw("COALESCE(NULLIF(employee_payroll.salary_id, ''), 'Unnamed Batch') as salary_id"),
-                DB::raw('COUNT(employee_payroll.p_id) as employee_count'),
-                DB::raw('SUM(employee_payroll.net_salary) as total_net')
-            )
-            ->groupBy('employee_payroll.year', 'employee_payroll.paymonth', 'service.employment_type', 'employee_payroll.salary_id')
-            ->orderBy('employee_payroll.year', 'desc')
-            ->orderByRaw("FIELD(employee_payroll.paymonth,'December','November','October','September','August','July','June','May','April','March','February','January')")
-            ->get();
+        // Build shared base query for joining service records
+        $batchQuery = function() use ($project_id) {
+            return DB::table('employee_payroll')
+                ->join('project_employee', 'project_employee.p_id', '=', 'employee_payroll.p_id')
+                ->join('service', 'service.p_id', '=', 'employee_payroll.p_id')
+                ->where('employee_payroll.is_frozen', 1)
+                ->where('project_employee.project_id', $project_id)
+                ->where(function ($q) {
+                    $q->whereRaw('service.id = (SELECT MAX(id) FROM service s2 WHERE s2.p_id = employee_payroll.p_id AND s2.status = 1)')
+                      ->orWhereRaw('service.id = (SELECT MAX(id) FROM service s2 WHERE s2.p_id = employee_payroll.p_id)');
+                })
+                ->select(
+                    'employee_payroll.paymonth',
+                    'employee_payroll.year',
+                    'service.employment_type',
+                    DB::raw("COALESCE(NULLIF(employee_payroll.salary_id, ''), 'Unnamed Batch') as salary_id"),
+                    DB::raw('COUNT(employee_payroll.p_id) as employee_count'),
+                    DB::raw('SUM(employee_payroll.net_salary) as total_net')
+                )
+                ->groupBy('employee_payroll.year', 'employee_payroll.paymonth', 'service.employment_type', 'employee_payroll.salary_id')
+                ->orderBy('employee_payroll.year', 'desc')
+                ->orderByRaw("FIELD(employee_payroll.paymonth,'December','November','October','September','August','July','June','May','April','March','February','January')");
+        };
 
-        return view('content.projects.deduction-master.index', compact('frozenBatches', 'pageConfigs', 'project_id'));
+        // Active frozen bills (not yet proceeded)
+        $frozenBatches = (clone $batchQuery())->where('employee_payroll.is_proceeded', 0)->get();
+
+        // Confirmed / proceeded bills
+        $proceededBatches = (clone $batchQuery())->where('employee_payroll.is_proceeded', 1)->get();
+
+        return view('content.projects.deduction-master.index', compact('frozenBatches', 'proceededBatches', 'pageConfigs', 'project_id'));
     }
 
     public function selectEmployees(Request $request, $project_id = null)
@@ -344,13 +350,28 @@ class DeductionMasterController extends Controller
 
             $netSalary = 0;
             if ($payroll) {
-                // Use the frozen net_salary as the base — this already includes the prorated salary,
-                // EPF employer share, EDLI charges, arrears, and any other components applied at freeze time.
-                $frozenNetSalary = (float)($payroll->net_salary ?? 0);
+                // Re-calculate prorated base from gross salary so we don't double-deduct from an already modified net_salary
+                $grossSalary = (float)($payroll->gross_salary ?? 0);
+                $workingDays = (float)($payroll->total_working_days ?? 30);
+                if ($workingDays <= 0) $workingDays = 30;
+                $daysWorked = (float)($payroll->days_worked ?? 30);
+                
+                $proratedSalary = round(($grossSalary / $workingDays) * $daysWorked, 2);
+                $arrear = (float)($payroll->other_allowance ?? 0);
                 
                 // Festival Allowance and Bonus are earnings that add to the base
-                $computedGross = $frozenNetSalary + $festivalAllowance + $bonus;
-                $netSalary = $computedGross - $totalDeductions;
+                $computedGross = $proratedSalary + $arrear + $festivalAllowance + $bonus;
+                $netSalaryBeforeTax = $computedGross - $totalDeductions;
+                
+                // Re-apply admin charge and GST if they exist on the payroll row
+                $adminChargePercent = (float)($payroll->admin_charge_percent ?? 0);
+                $gstPercent = (float)($payroll->gst_percent ?? 0);
+                $totalChargePercent = $adminChargePercent + $gstPercent;
+
+                $netSalary = $netSalaryBeforeTax;
+                if ($totalChargePercent > 0) {
+                    $netSalary = $netSalary - ($netSalary * $totalChargePercent / 100);
+                }
             }
 
             \DB::table('employee_payroll')
@@ -379,6 +400,7 @@ class DeductionMasterController extends Controller
                     'bonus' => $bonus,
                     'total_deductions' => $totalDeductions,
                     'net_salary' => $netSalary,
+                    'is_proceeded' => 1,
                 ]);
         }
 
@@ -579,7 +601,136 @@ class DeductionMasterController extends Controller
         $employmentType = trim(strtolower($payroll->employment_type ?? $payroll->pe_employment_type ?? ''));
         $role = trim(strtolower($payroll->role ?? ''));
 
-        return $employmentType === 'deputation' || 
-               in_array($role, ['deputation offier', 'deputation officer', 'deputation officerr']);
+        return $employmentType === 'deputation';
+    }
+
+    private function getStatementData(Request $request, $project_id = null)
+    {
+        $project_id = $project_id ?? $request->project_id ?? 1;
+        $batchId = $request->salary_id;
+        $batchMonth = $request->month;
+        $batchYear = $request->year;
+        $batchEmploymentType = $request->employment_type;
+
+        $columns = [];
+        if ($request->has('columns')) {
+            $cols = $request->query('columns');
+            $columns = is_array($cols) ? $cols : explode(',', $cols);
+        }
+        if (empty($columns)) {
+            $columns = ['slno', 'name', 'designation', 'gross_salary', 'total_deductions', 'net_salary'];
+        }
+
+        $query = DB::table('employee_payroll')
+            ->join('project_employee', 'project_employee.p_id', '=', 'employee_payroll.p_id')
+            ->leftJoin('service', function($join) {
+                $join->on('service.p_id', '=', 'employee_payroll.p_id')
+                     ->whereRaw('service.id = (SELECT MAX(s2.id) FROM service s2 WHERE s2.p_id = employee_payroll.p_id)');
+            })
+            ->where('employee_payroll.is_frozen', 1)
+            ->where('project_employee.project_id', $project_id);
+
+        if ($batchId) {
+            if ($batchId === 'Unnamed Batch') {
+                $query->where(function($q) {
+                    $q->whereNull('employee_payroll.salary_id')->orWhere('employee_payroll.salary_id', '');
+                });
+            } else {
+                $query->where('employee_payroll.salary_id', $batchId);
+            }
+        }
+        if ($batchMonth) {
+            $query->where('employee_payroll.paymonth', $batchMonth);
+        }
+        if ($batchYear) {
+            $query->where('employee_payroll.year', $batchYear);
+        }
+        if ($batchEmploymentType) {
+            $query->where('service.employment_type', $batchEmploymentType);
+        }
+
+        $payrolls = $query->select(
+            'employee_payroll.*',
+            'project_employee.name',
+            'project_employee.bank_name',
+            'project_employee.account_no',
+            'project_employee.ifsc_code',
+            'project_employee.branch',
+            'project_employee.date_of_joining',
+            'project_employee.pan_number',
+            'project_employee.address',
+            'project_employee.email',
+            'project_employee.mobile',
+            'service.role as designation'
+        )->orderBy('project_employee.name', 'asc')->get();
+
+        $statementData = [];
+        foreach ($payrolls as $payroll) {
+            $rowData = [];
+            foreach ($columns as $col) {
+                if ($col === 'slno') continue;
+                if (in_array($col, ['name', 'designation', 'date_of_joining', 'bank_name', 'account_no', 'ifsc_code', 'branch', 'pan_number', 'address', 'email', 'mobile'])) {
+                    $rowData[$col] = $payroll->{$col} ?? '-';
+                } else {
+                    $rowData[$col] = $payroll->{$col} ?? 0;
+                }
+            }
+            $statementData[] = $rowData;
+        }
+
+        $columnLabels = [
+            'slno' => 'Sl. No',
+            'name' => 'Name',
+            'designation' => 'Designation',
+            'date_of_joining' => 'Date of Joining',
+            'pan_number' => 'PAN Number',
+            'address' => 'Address',
+            'email' => 'Email',
+            'mobile' => 'Phone Number',
+            'bank_name' => 'Bank Name',
+            'account_no' => 'Account No',
+            'ifsc_code' => 'IFSC Code',
+            'branch' => 'Branch',
+            'gross_salary' => 'Gross Salary',
+            'festival_allowance' => 'Festival Allowance',
+            'bonus' => 'Bonus',
+            'tds' => 'TDS',
+            'professional_tax' => 'PT',
+            'pf' => 'PF',
+            'total_deductions' => 'Total Deductions',
+            'net_salary' => 'Net Salary (Payable)'
+        ];
+
+        return [
+            'statementData' => $statementData,
+            'columns' => $columns,
+            'columnLabels' => $columnLabels,
+            'salary_id' => $batchId,
+            'month' => $batchMonth,
+            'year' => $batchYear,
+            'employment_type' => $batchEmploymentType,
+            'project_id' => $project_id
+        ];
+    }
+
+    public function statementPreview(Request $request, $project_id = null)
+    {
+        $data = $this->getStatementData($request, $project_id);
+        $data['pageConfigs'] = ['myLayout' => 'blank'];
+        
+        return view('content.projects.deduction-master.statement-preview', $data);
+    }
+
+    public function downloadStatementExcel(Request $request, $project_id = null)
+    {
+        $data = $this->getStatementData($request, $project_id);
+        
+        $export = new \App\Exports\DeductionStatementExport(
+            $data['statementData'], $data['columns'], $data['columnLabels']
+        );
+
+        $filename = "Statement_{$data['salary_id']}_{$data['month']}_{$data['year']}.xlsx";
+        
+        return \Maatwebsite\Excel\Facades\Excel::download($export, $filename);
     }
 }

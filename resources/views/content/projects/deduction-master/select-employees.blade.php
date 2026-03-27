@@ -13,7 +13,9 @@
 
 @section('content')
 @php
-    $isSaved = session('success') ? true : false;
+    // is_proceeded = 1 means the user has already saved & proceeded this bill — treat as read-only
+    $isProceeded = $frozenPayrolls->isNotEmpty() && $frozenPayrolls->first()->is_proceeded == 1;
+    $isSaved = $isProceeded || (session('success') ? true : false);
 @endphp
 <h4 class="fw-bold py-3 mb-4">
   <span class="text-muted fw-light">PMS / Salary Deduction Management /</span> Frozen Employees
@@ -156,22 +158,38 @@
                                 $uiFa = resolveDeductionUI($payroll->payroll_festival_allowance ?? 0, $payroll->dm_festival_value, $payroll->dm_festival_type, $payroll->dm_festival_amount);
                                 $uiBonus = resolveDeductionUI($payroll->payroll_bonus ?? 0, $payroll->dm_bonus_value, $payroll->dm_bonus_type, $payroll->dm_bonus_amount);
                                 
-                                  // Use the FROZEN net_salary as the base — this already includes
-                                  // prorated salary, EPF employer share, EDLI charges, arrears, and
-                                  // any other components applied at the time of payroll freezing.
-                                  $grossSalary = (float)($payroll->frozen_gross_salary ?? $payroll->gross_salary ?? 0);
-                                  $frozenNetSalary = (float)($payroll->net_salary ?? 0);
+                                  // === CORRECT BASE SALARY COMPUTATION ===
+                                  // Step 1: Use the EXACT finalized salary from Salary Management.
+                                  // This value ($payroll->net_salary) serves as the single source of truth because
+                                  // it ALREADY perfectly factors in:
+                                  // - Proration and Days Worked
+                                  // - Leave Without Pay (LOP)
+                                  // - Arrears
+                                  // - Service/Admin Charge
+                                  // - GST Deductions
+                                  $masterGross    = (float)($payroll->frozen_gross_salary ?? $payroll->gross_salary ?? 0);
+                                  $totalWorkDays  = (float)($payroll->frozen_total_working_days ?? $payroll->total_working_days ?? 30);
+                                  $daysWorked     = (float)($payroll->frozen_days_worked ?? $payroll->days_worked ?? 30);
+                                  if ($totalWorkDays <= 0) $totalWorkDays = 30;
                                   
-                                  // Festival Allowance and Bonus are earnings that add to the gross
-                                  $computedGrossSalary = $frozenNetSalary + $uiFa['amt'] + $uiBonus['amt'];
+                                  // This is the true base for the employee's deduction month:
+                                  $proratedSalary = (float)($payroll->net_salary ?? 0);
+                                  $arrear = (float)($payroll->frozen_arrear ?? $payroll->other_allowance ?? 0);
                                   
-                                  // Sum ALL deduction amounts for net salary computation
+                                  // Step 2: Base before bonuses/allowances is simply this exact frozen amount
+                                  $baseBeforeBonuses = $proratedSalary;
+                                  
+                                  // Step 3: Gross = base + FA + Bonus (allowances applied in Deduction Master)
+                                  $computedGrossSalary = $baseBeforeBonuses + $uiFa['amt'] + $uiBonus['amt'];
+                                  
+                                  // Step 6: Sum ALL DEDUCTIONS (earnings like FA/Bonus are NOT deductions)
                                   $allDeductionAmts = $uiTds['amt'] + $uiPf['amt'] +
-                                                      $ui192['amt'] + $ui194['amt'] + $uiPt['amt'] + $uiEsi['amt'] + 
-                                                      $uiLic['amt'] + $uiMedisep['amt'] + $uiGpf['amt'] + 
-                                                      $uiSli1['amt'] + $uiSli2['amt'] + $uiSli3['amt'] + 
+                                                      $ui192['amt'] + $ui194['amt'] + $uiPt['amt'] + $uiEsi['amt'] +
+                                                      $uiLic['amt'] + $uiMedisep['amt'] + $uiGpf['amt'] +
+                                                      $uiSli1['amt'] + $uiSli2['amt'] + $uiSli3['amt'] +
                                                       $uiGis['amt'] + $uiGpais['amt'] + $uiOther['amt'];
                                   
+                                  // Step 7: Net = Gross - all deductions
                                   $computedNetSalary = $computedGrossSalary - $allDeductionAmts;
                                   $displayedPercentage = ($computedGrossSalary > 0) ? ($computedNetSalary / $computedGrossSalary) * 100 : 0;
                               @endphp
@@ -179,10 +197,14 @@
                                   <input type="hidden" name="p_id[]" value="{{ $payroll->p_id }}">
                                   <input type="hidden" name="months[{{ $index }}]" value="{{ $payroll->paymonth }}">
                                   <input type="hidden" name="years[{{ $index }}]" value="{{ $payroll->year }}">
-                                  <input type="hidden" class="gross-salary-val" value="{{ $grossSalary }}">
-                                  <input type="hidden" class="frozen-net-salary-val" value="{{ $frozenNetSalary }}">
+                                  {{-- Hidden fields for JS: store the clean prorated base and arrear separately --}}
+                                  <input type="hidden" class="gross-salary-val" value="{{ $masterGross }}">
+                                  <input type="hidden" class="prorated-salary-val" value="{{ $proratedSalary }}">
+                                  <input type="hidden" class="arrear-val" value="{{ $arrear }}">
+                                  <input type="hidden" class="frozen-net-salary-val" value="{{ $payroll->net_salary }}">
                                   <input type="hidden" class="computed-gross-salary-val" value="{{ $computedGrossSalary }}">
-                                  <input type="hidden" class="base-computed-gross-val" value="{{ $frozenNetSalary }}">
+                                  {{-- base-computed-gross-val = prorated + arrear (before FA/Bonus), used by JS as base for earnings --}}
+                                  <input type="hidden" class="base-computed-gross-val" value="{{ $baseBeforeBonuses }}">
                                   <input type="hidden" class="basic-pay-val" value="{{ $payroll->service_basic_pay ?? $payroll->basic_pay ?? 0 }}">
                                   <input type="hidden" class="da-val" value="{{ $payroll->service_da ?? $payroll->da ?? 0 }}">
                                   <input type="hidden" class="employment-type-val" value="{{ $payroll->employment_type ?? '' }}">
@@ -296,7 +318,10 @@
                                 @endforeach
 
 
-                                <td class="text-end fw-semibold">₹{{ number_format($grossSalary, 2) }}</td>
+                                <td class="text-end fw-semibold" title="Master Gross: ₹{{ number_format($masterGross, 2) }}">
+                                    ₹{{ number_format($proratedSalary, 2) }}
+                                    <small class="d-block text-muted" style="font-size:10px;">{{ $daysWorked }}/{{ $totalWorkDays }} days</small>
+                                </td>
                                 <td class="text-end fw-semibold">₹{{ number_format($computedGrossSalary, 2) }}</td>
                                 <td class="text-end fw-semibold text-secondary" title="Saved Database Value">
                                     ₹{{ number_format($payroll->net_salary, 2) }}
@@ -361,66 +386,52 @@
 <script>
 $(document).ready(function() {
     function calculateNetSalary() {
-        console.log("--- Starting Net Salary Calculation ---");
         $('tbody tr').each(function() {
             var row = $(this);
-            var empName = row.find('td:first').text().trim();
-            
+
             // 1. EARNINGS
-            // Base Gross = Prorated Salary + Arrears (from hidden fields calculated by PHP)
+            // base-computed-gross-val = proratedSalary + arrear (set by PHP, not the master gross)
             var baseGross = parseFloat(row.find('.base-computed-gross-val').val()) || 0;
             var festivalAllowance = Math.abs(parseFloat(row.find('.attr-festival-allowance').val()) || 0);
-            var bonus = Math.abs(parseFloat(row.find('.attr-bonus').val()) || 0);
-            
+            var bonus             = Math.abs(parseFloat(row.find('.attr-bonus').val())             || 0);
+
+            // Gross = prorated + arrear + allowances that ADD to pay
             var totalEarnings = baseGross + festivalAllowance + bonus;
-            
+
             // 2. DEDUCTIONS
             var totalDeductions = 0;
-            
-            // Dynamic deductions (Excluding employer contributions from Net Salary drop)
+
+            // Dynamic deductions — skip EPF employer share & EDLI (employer costs, not employee deductions)
             row.find('.ded-hidden-amt').each(function() {
                 var targetId = $(this).attr('id');
-                // Skip Employer shares EPF & EDLI because they do not reduce employee's net take-home pay
                 if (targetId && (targetId.includes('hidden_epf_') || targetId.includes('hidden_edli_'))) {
-                    return; // Skip
+                    return;
                 }
                 totalDeductions += parseFloat($(this).val()) || 0;
             });
-            
-            // Professional Tax (governed by Pay Item Master)
-            var profTax = parseFloat(row.find('.attr-professional-tax').val()) || 0;
-            totalDeductions += profTax;
-            
-            // New deductions
-            totalDeductions += parseFloat(row.find('.attr-medisep').val()) || 0;
-            totalDeductions += parseFloat(row.find('.attr-gpf').val()) || 0;
-            totalDeductions += parseFloat(row.find('.attr-sli1').val()) || 0;
-            totalDeductions += parseFloat(row.find('.attr-sli2').val()) || 0;
-            totalDeductions += parseFloat(row.find('.attr-sli3').val()) || 0;
-            totalDeductions += parseFloat(row.find('.attr-gis').val()) || 0;
-            totalDeductions += parseFloat(row.find('.attr-gpais').val()) || 0;
-            
-            // 3. FINAL NET
+
+            // Always-editable deductions
+            totalDeductions += parseFloat(row.find('.attr-professional-tax').val()) || 0;
+            totalDeductions += parseFloat(row.find('.attr-medisep').val())          || 0;
+            totalDeductions += parseFloat(row.find('.attr-gpf').val())              || 0;
+            totalDeductions += parseFloat(row.find('.attr-sli1').val())             || 0;
+            totalDeductions += parseFloat(row.find('.attr-sli2').val())             || 0;
+            totalDeductions += parseFloat(row.find('.attr-sli3').val())             || 0;
+            totalDeductions += parseFloat(row.find('.attr-gis').val())              || 0;
+            totalDeductions += parseFloat(row.find('.attr-gpais').val())            || 0;
+
+            // 3. FINAL NET = Gross - Deductions
             var currentNetSalary = totalEarnings - totalDeductions;
-            
-            // Percentage based on Original Gross Salary
-            var originalGross = parseFloat(row.find('.gross-salary-val').val()) || 0;
-            var percentage = (originalGross > 0) ? (currentNetSalary / originalGross) * 100 : 0;
-            
-            // LOGGING
-            console.log(`Employee: ${empName}`);
-            console.log(`  > Base Gross (Prorated+Arrear): ${baseGross}`);
-            console.log(`  > Festival Allowance (+): ${festivalAllowance}`);
-            console.log(`  > Bonus (+): ${bonus}`);
-            console.log(`  > Total Earnings: ${totalEarnings}`);
-            console.log(`  > Total Deductions (-): ${totalDeductions}`);
-            console.log(`  > Computed Net: ${currentNetSalary}`);
-            
+
+            // Percentage relative to the actual monthly gross (prorated-based), not the master gross
+            var percentage = (totalEarnings > 0) ? (currentNetSalary / totalEarnings) * 100 : 0;
+
             // Update UI
-            row.find('.current-net-salary-display').text(currentNetSalary.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2}));
+            row.find('.current-net-salary-display').text(
+                currentNetSalary.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})
+            );
             row.find('.summary-percentage-display').text(percentage.toFixed(1) + '%');
         });
-        console.log("--- Calculation Complete ---");
     }
 
     // Trigger calculation on input change for readonly generated allowances
@@ -441,20 +452,22 @@ $(document).ready(function() {
         
         var val = parseFloat(valInput.val()) || 0;
         var type = typeDropdown.val();
-        var grossSalary = parseFloat(row.find('.gross-salary-val').val()) || 0;
-        
+        // Use the PRORATED monthly salary as the base for percentage deductions (not the master gross)
+        var proratedSalary = parseFloat(row.find('.prorated-salary-val').val()) || 0;
+
         var calculatedAmount = 0;
         if (type === 'percentage') {
             var empType = row.find('.employment-type-val').val() || '';
-            var baseAmount = grossSalary;
-            
-            // For PF calculation of Deputation employees (% of Gross selected) -> Only DA + Basic Salary, excluding HRA
+            // Default base = actual monthly prorated salary (what the employee actually earned this month)
+            var baseAmount = proratedSalary;
+
+            // For PF of Deputation employees: percentage applies only to Basic + DA (no HRA)
             if (empType.toLowerCase() === 'deputation' && target === 'pf_ded') {
-                 var basic = parseFloat(row.find('.basic-pay-val').val()) || 0;
-                 var da = parseFloat(row.find('.da-val').val()) || 0;
-                 baseAmount = basic + da;
+                var basic = parseFloat(row.find('.basic-pay-val').val()) || 0;
+                var da    = parseFloat(row.find('.da-val').val())         || 0;
+                baseAmount = basic + da;
             }
-            
+
             calculatedAmount = (val / 100) * baseAmount;
         } else {
             calculatedAmount = val;

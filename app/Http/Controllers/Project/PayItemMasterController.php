@@ -548,8 +548,8 @@ class PayItemMasterController extends Controller
 
         $draftBill = \App\Models\EmployeePayBill::where('salary_id', $request->salary_id)->firstOrFail();
         
-        if ($draftBill->status === 'Finalized') {
-            return response()->json(['success' => false, 'message' => 'This bill is already finalized and cannot be modified.'], 403);
+        if ($draftBill->status === 'Finalized' || $draftBill->status === 'Allocated') {
+            return response()->json(['success' => false, 'message' => 'This bill is already finalized or allocated and cannot be modified.'], 403);
         }
 
         return \DB::transaction(function() use ($request, $draftBill) {
@@ -1476,8 +1476,9 @@ class PayItemMasterController extends Controller
         }
 
         $grossSalary = (float)($payroll->gross_salary ?? 0);
-        $totalWorkingDays = (float)($payroll->total_working_days ?? 0);
-        $daysWorked = (float)($payroll->days_worked ?? 0);
+        $workingDays = (float)($payroll->total_working_days ?? 30);
+        if ($workingDays <= 0) $workingDays = 30; // fallback
+        $daysWorked = (float)($payroll->days_worked ?? 30);
         $arrear = (float)($payroll->other_allowance ?? 0);
         $festivalAllowance = (float)($payroll->festival_allowance ?? 0);
         $bonus = (float)($payroll->bonus ?? 0);
@@ -1487,9 +1488,18 @@ class PayItemMasterController extends Controller
         elseif ($isBonus) { $bonus = $amt; }
         elseif ($destColumn === 'other_allowance') { $arrear = $amt; }
 
-        $proratedSalary = $grossSalary;
+        $proratedSalary = round(($grossSalary / $workingDays) * $daysWorked, 2);
         $computedGross = $proratedSalary + $arrear + $festivalAllowance + $bonus;
-        $netSalary = $computedGross - $totalDeductions;
+        $netSalaryBeforeTax = $computedGross - $totalDeductions;
+
+        $adminChargePercent = (float)($payroll->admin_charge_percent ?? 0);
+        $gstPercent = (float)($payroll->gst_percent ?? 0);
+        $totalChargePercent = $adminChargePercent + $gstPercent;
+
+        $netSalary = $netSalaryBeforeTax;
+        if ($totalChargePercent > 0) {
+            $netSalary = $netSalary - ($netSalary * $totalChargePercent / 100);
+        }
 
         \DB::table('employee_payroll')
             ->where('id', $payroll->id)

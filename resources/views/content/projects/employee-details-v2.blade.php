@@ -72,11 +72,25 @@
               <span>{{ $employee->address }}</span>
             </li>
             <li class="mb-2 pt-1">
-                <span class="fw-semibold me-1">Status:</span>
-                <span class="badge bg-label-{{ $employee->status == 1 ? 'success' : 'danger' }}">{{ $employee->status == 1 ? 'Active' : 'Inactive' }}</span>
-              </li>
+              <span class="fw-semibold me-1">Bank Name:</span>
+              <span>{{ $employee->bank_name ?? 'N/A' }}</span>
+            </li>
+            <li class="mb-2 pt-1">
+              <span class="fw-semibold me-1">Account No:</span>
+              <span>{{ $employee->account_no ?? 'N/A' }}</span>
+            </li>
+            <li class="mb-2 pt-1">
+              <span class="fw-semibold me-1">IFSC:</span>
+              <span>{{ $employee->ifsc_code ?? 'N/A' }}</span>
+            </li>
+            @if($employee->documents)
+            <li class="mb-2 pt-1 mt-3 border-top pt-3">
+              <span class="fw-semibold me-1">Documents:</span>
+              <a href="{{ asset('uploads/employee_documents/' . $employee->documents) }}" target="_blank" class="badge bg-label-primary"><i class="ti ti-file-description me-1"></i>View Document</a>
+            </li>
+            @endif
           </ul>
-          <div class="d-flex justify-content-center">
+          <div class="d-flex justify-content-center mt-4">
             <button class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#editMasterModal">Edit Master Info</button>
           </div>
         </div>
@@ -314,7 +328,7 @@
           <h3 class="mb-2">Edit Master Information</h3>
           <p class="text-muted">Update employee primary details.</p>
         </div>
-        <form id="editMasterForm" class="row g-3" action="{{ route('pms.employees.update-master', $employee->id) }}" onsubmit="return false">
+        <form id="editMasterForm" class="row g-3" enctype="multipart/form-data" action="{{ route('pms.employees.update-master', $employee->id) }}" onsubmit="return false">
           @csrf
           <div class="col-12 col-md-6">
             <label class="form-label" for="edit_name">First Name</label>
@@ -352,6 +366,36 @@
             <label class="form-label" for="edit_address">Address</label>
             <textarea id="edit_address" name="address" class="form-control" rows="2">{{ $employee->address }}</textarea>
           </div>
+          <div class="col-12 mt-4">
+            <h6 class="border-bottom pb-2">Bank Account Details</h6>
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="edit_bank_name">Bank Name</label>
+            <input type="text" id="edit_bank_name" name="bank_name" class="form-control" value="{{ $employee->bank_name }}" placeholder="e.g. State Bank of India" />
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="edit_account_no">Account Number</label>
+            <input type="text" id="edit_account_no" name="account_no" class="form-control" value="{{ $employee->account_no }}" placeholder="1234567890" />
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="edit_account_name">Account Holder Name</label>
+            <input type="text" id="edit_account_name" name="account_name" class="form-control" value="{{ $employee->account_name }}" placeholder="John Doe" />
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="edit_branch">Branch</label>
+            <input type="text" id="edit_branch" name="branch" class="form-control" value="{{ $employee->branch }}" placeholder="e.g. Main Branch" />
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label" for="edit_ifsc_code">IFSC Code</label>
+            <input type="text" id="edit_ifsc_code" name="ifsc_code" class="form-control" value="{{ $employee->ifsc_code }}" placeholder="SBIN0001234" />
+          </div>
+          <div class="col-12 mt-2">
+            <label class="form-label" for="edit_documents">Update Documents (Optional)</label>
+            <input type="file" id="edit_documents" name="documents" class="form-control" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" />
+            @if($employee->documents)
+              <small class="text-muted d-block mt-1">Current: <a href="{{ asset('uploads/employee_documents/' . $employee->documents) }}" target="_blank">View File</a></small>
+            @endif
+          </div>
           <div class="col-12 text-center">
             <button type="submit" class="btn btn-primary me-sm-3 me-1 btn-submit-edit" data-form="editMasterForm">Submit</button>
             <button type="reset" class="btn btn-label-secondary" data-bs-dismiss="modal" aria-label="Close">Cancel</button>
@@ -388,12 +432,7 @@
           </div>
           <div class="col-12 col-md-6">
             <label class="form-label" for="edit_role">Role</label>
-            <select id="edit_role" name="role" class="form-select">
-              <option value="">Select Role</option>
-              @foreach ($serviceRoles as $role)
-                <option value="{{ $role }}">{{ $role }}</option>
-              @endforeach
-            </select>
+            <input type="text" id="edit_role" name="role" class="form-control" placeholder="e.g. Coordinator" />
           </div>
           <div class="col-12 col-md-6">
             <label class="form-label" for="edit_pay_type">Pay Type</label>
@@ -893,7 +932,7 @@ $(function() {
         $('#edit_pay_type').val(data.pay_type || 'Monthly').trigger('change');
 
         $('#edit_department').val(data.department || '');
-        $('#edit_role').val(data.role || '').trigger('change');
+        $('#edit_role').val(data.role || '');
         
         $('#edit_consolidated_pay').val(data.consolidated_pay || '');
         $('#edit_basic_pay').val(data.basic_pay || '');

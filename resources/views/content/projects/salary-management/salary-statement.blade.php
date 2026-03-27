@@ -141,6 +141,8 @@
                 @if(in_array('edli_charges', $columns))<th>EDLI & EPF Admin</th>@endif
                 @if(in_array('pf', $columns))<th>PF</th>@endif
                 @if(in_array('deduction', $columns))<th>Deductions</th>@endif
+                @if(in_array('admin_charge', $columns))<th>Admin Charge</th>@endif
+                @if(in_array('gst', $columns))<th>GST</th>@endif
                 @if(in_array('payable', $columns))<th>Payable Remuneration</th>@endif
             </tr>
         </thead>
@@ -149,6 +151,8 @@
                 $totalArrears = 0;
                 $totalRemuneration = 0;
                 $totalDeductions = 0;
+                $totalAdminCharge = 0;
+                $totalGst = 0;
                 $totalPayable = 0;
                 $totalEmployerContribution = 0;
                 $totalEpf = 0;
@@ -170,6 +174,8 @@
                 @if(in_array('edli_charges', $columns))<td class="text-end">{{ $row->edli_charges > 0 ? number_format((float)$row->edli_charges, 2) : '-' }}</td>@endif
                 @if(in_array('pf', $columns))<td class="text-end">{{ $row->pf > 0 ? number_format((float)$row->pf, 2) : '-' }}</td>@endif
                 @if(in_array('deduction', $columns))<td class="text-end">{{ $row->deductions > 0 ? number_format((float)$row->deductions, 2) : '-' }}</td>@endif
+                @if(in_array('admin_charge', $columns))<td class="text-end">{{ $row->admin_charge > 0 ? number_format((float)$row->admin_charge, 2) : '-' }}</td>@endif
+                @if(in_array('gst', $columns))<td class="text-end">{{ $row->gst > 0 ? number_format((float)$row->gst, 2) : '-' }}</td>@endif
                 @if(in_array('payable', $columns))<td class="text-end">{{ number_format((float)$row->payable, 2) }}</td>@endif
             </tr>
             @php
@@ -177,6 +183,8 @@
                 $totalRemuneration += $row->remuneration;
                 $totalEpf += $row->epf ?? 0;
                 $totalDeductions += $row->deductions;
+                $totalAdminCharge += $row->admin_charge ?? 0;
+                $totalGst += $row->gst ?? 0;
                 $totalPayable += $row->payable;
                 $totalEmployerContribution += $row->employer_contribution ?? 0;
                 $totalEpfEmployersShare += $row->epf_employers_share ?? 0;
@@ -203,6 +211,8 @@
                 @if(in_array('edli_charges', $columns))<td class="text-end">{{ $totalEdliCharges > 0 ? number_format((float)$totalEdliCharges, 2) : '-' }}</td>@endif
                 @if(in_array('pf', $columns))<td class="text-end">{{ $totalPf > 0 ? number_format((float)$totalPf, 2) : '-' }}</td>@endif
                 @if(in_array('deduction', $columns))<td class="text-end">{{ $totalDeductions > 0 ? number_format((float)$totalDeductions, 2) : '-' }}</td>@endif
+                @if(in_array('admin_charge', $columns))<td class="text-end">{{ $totalAdminCharge > 0 ? number_format((float)$totalAdminCharge, 2) : '-' }}</td>@endif
+                @if(in_array('gst', $columns))<td class="text-end">{{ $totalGst > 0 ? number_format((float)$totalGst, 2) : '-' }}</td>@endif
                 @if(in_array('payable', $columns))<td class="text-end">{{ number_format((float)$totalPayable, 2) }}</td>@endif
             </tr>
             
@@ -211,28 +221,13 @@
                 // MATH BASED ON INVOICE IMAGE
                 $totalEligibleSalary = $totalRemuneration + $totalArrears;
                 
-                // Only compute and subtract Service Charge & GST if NOT frozen
-                // (If frozen, these were already deducted from individual net salaries)
-                if (!isset($isFrozenBatch) || !$isFrozenBatch) {
-                    $serviceChargePercent = request('admin_charge', 7.5);
-                    $serviceCharge = round($totalEligibleSalary * ($serviceChargePercent / 100));
-                    
-                    $includeGst = request('include_gst') == '1';
-                    $gstChargePercent = $includeGst ? request('gst_charge', 0) : 0;
-                    $gstAmountTotal = ($totalEligibleSalary * ($gstChargePercent / 100));
-                    
-                    $invoiceSubTotal = ($totalEligibleSalary + $totalEpfEmployersShare + $totalEdliCharges) - $serviceCharge - $gstAmountTotal;
-                } else {
-                    $serviceChargePercent = 0;
-                    $serviceCharge = 0;
-                    $includeGst = false;
-                    $gstChargePercent = 0;
-                    $gstAmountTotal = 0;
-                    $invoiceSubTotal = ($totalEligibleSalary + $totalEpfEmployersShare + $totalEdliCharges);
-                }
+                // We no longer calculate percentage here, we use the perfectly summed individual amounts!
+                $serviceCharge = $totalAdminCharge;
+                $gstAmountTotal = $totalGst;
                 
+                $invoiceSubTotal = ($totalEligibleSalary + $totalEpfEmployersShare + $totalEdliCharges) - $serviceCharge - $gstAmountTotal;
                 
-                // For the detailed breakdown, we just show one GST row if it's a deduction
+                // For the detailed breakdown, we show the totals derived from the individual records
                 $finalPayable = $invoiceSubTotal;
                 $colspanLabels = count($columns) - 1;
             @endphp
@@ -248,15 +243,15 @@
                 <td colspan="{{ $colspanLabels }}" class="text-center">EDLI AND EPF contribution</td>
                 <td class="text-end">{{ number_format((float)$totalEdliCharges, 2) }}</td>
             </tr>
-            @if((!isset($isFrozenBatch) || !$isFrozenBatch) && $serviceCharge > 0)
+            @if($serviceCharge > 0)
             <tr style="font-weight: bold;">
-                <td colspan="{{ $colspanLabels }}" class="text-center">Less: Service Charges {{ $serviceChargePercent }}% of total eligible salary</td>
+                <td colspan="{{ $colspanLabels }}" class="text-center">Less: Total Service Charges</td>
                 <td class="text-end">{{ number_format((float)$serviceCharge, 2) }}</td>
             </tr>
             @endif
-            @if((!isset($isFrozenBatch) || !$isFrozenBatch) && $includeGst && $gstAmountTotal > 0)
+            @if($gstAmountTotal > 0)
             <tr style="font-weight: bold;">
-                <td colspan="{{ $colspanLabels }}" class="text-center">Less: GST {{ $gstChargePercent }}%</td>
+                <td colspan="{{ $colspanLabels }}" class="text-center">Less: Total GST</td>
                 <td class="text-end">{{ number_format((float)$gstAmountTotal, 2) }}</td>
             </tr>
             @endif
@@ -266,36 +261,22 @@
             </tr>
             @endif
         </tbody>
-    </table>
-
-    @if(!$showInvoiceStyle)
+    </table>    @if(!$showInvoiceStyle)
     <div class="summary-block">
-            $remunerationPayable = $totalPayable;
+        @php
+            $grossPayable = $totalRemuneration + $totalArrears;
             $employerContributionValue = $totalEmployerContribution ?? 0;
-            $subTotalBeforeServiceCharge = $remunerationPayable + $employerContributionValue;
             
-            if (!isset($isFrozenBatch) || !$isFrozenBatch) {
-                $adminChargePercent = request('admin_charge', 7.5);
-                $includeGstSummary = request('include_gst') == '1';
-                $gstChargePercentSummary = $includeGstSummary ? request('gst_charge', 0) : 0;
-                
-                $serviceChargeValue = round($subTotalBeforeServiceCharge * ($adminChargePercent / 100));
-                $gstChargeValue = round($subTotalBeforeServiceCharge * ($gstChargePercentSummary / 100));
-                
-                $invoiceTotal = $subTotalBeforeServiceCharge - $serviceChargeValue - $gstChargeValue;
-            } else {
-                $adminChargePercent = 0;
-                $includeGstSummary = false;
-                $gstChargePercentSummary = 0;
-                $serviceChargeValue = 0;
-                $gstChargeValue = 0;
-                $invoiceTotal = $subTotalBeforeServiceCharge;
-            }
+            $serviceChargeValue = $totalAdminCharge;
+            $gstChargeValue = $totalGst;
+            
+            // Total Payable is Gross - Admin - GST. So invoice total is Payable + Employer Contribution.
+            $invoiceTotal = $totalPayable + $employerContributionValue;
         @endphp
 
         <div class="summary-row">
-            <span class="summary-label">Remuneration Payable</span>
-            <span class="summary-value">{{ number_format((float)$remunerationPayable, 2) }}</span>
+            <span class="summary-label">Remuneration Payable (Net)</span>
+            <span class="summary-value">{{ number_format((float)$totalPayable, 2) }}</span>
         </div>
         
         @if($employerContributionValue > 0)
@@ -305,15 +286,15 @@
         </div>
         @endif
         
-        @if((!isset($isFrozenBatch) || !$isFrozenBatch) && $serviceChargeValue > 0)
+        @if($serviceChargeValue > 0)
         <div class="summary-row">
-            <span class="summary-label">Less: Administrative Charge ({{ $adminChargePercent }}%)</span>
+            <span class="summary-label">Total Administrative Charge</span>
             <span class="summary-value">{{ number_format((float)$serviceChargeValue, 2) }}</span>
         </div>
         @endif
-        @if((!isset($isFrozenBatch) || !$isFrozenBatch) && $gstChargeValue > 0)
+        @if($gstChargeValue > 0)
         <div class="summary-row">
-            <span class="summary-label">Less: GST ({{ $gstChargePercentSummary }}%)</span>
+            <span class="summary-label">Total GST Charge</span>
             <span class="summary-value">{{ number_format((float)$gstChargeValue, 2) }}</span>
         </div>
         @endif
