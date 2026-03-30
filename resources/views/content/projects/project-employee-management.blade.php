@@ -533,13 +533,22 @@ document.addEventListener('DOMContentLoaded', function () {
             message: 'Please enter address'
           }
         }
-      }
+      },
+      bank_name: { validators: { notEmpty: { message: 'Please enter Bank Name' } } },
+      account_no: { validators: { notEmpty: { message: 'Please enter Account Number' }, regexp: { regexp: /^[0-9]+$/, message: 'Account number must be numeric' } } },
+      account_name: { validators: { notEmpty: { message: 'Please enter Account Holder Name' } } },
+      branch: { validators: { notEmpty: { message: 'Please enter Branch' } } },
+      ifsc_code: { validators: { notEmpty: { message: 'Please enter IFSC Code' } } }
     },
     plugins: {
-      trigger: new FormValidation.plugins.Trigger(),
+      trigger: new FormValidation.plugins.Trigger({
+        event: 'blur input', // Explicitly enable live validation on blur and typing
+        delay: 500 // Optional delay if you want it to wait a bit while typing
+      }),
       bootstrap5: new FormValidation.plugins.Bootstrap5({
         // Use this for enabling/changing valid/invalid class
-        eleValidClass: '',
+        eleValidClass: 'is-valid',
+        eleInvalidClass: 'is-invalid',
         rowSelector: function (field, ele) {
           // field is the field name & ele is the field element
           return '.col-sm-6, .col-sm-12';
@@ -549,6 +558,56 @@ document.addEventListener('DOMContentLoaded', function () {
       submitButton: new FormValidation.plugins.SubmitButton()
     }
   });
+
+  // Force live validation immediately when user clicks away or types
+  const validateFields = ['name', 'email', 'mobile', 'age', 'dob', 'joining_date', 'address', 'bank_name', 'account_no', 'account_name', 'branch', 'ifsc_code'];
+  validateFields.forEach(field => {
+      const inputs = addGlobalEmployeeForm.querySelectorAll(`[name="${field}"]`);
+      inputs.forEach(input => {
+          input.addEventListener('blur', () => fv.revalidateField(field));
+          input.addEventListener('input', () => fv.revalidateField(field));
+      });
+  });
+
+  // Force the name input to discard numeric and special characters (letters and spaces only)
+  const nameInput = addGlobalEmployeeForm.querySelector('[name="name"]');
+  if (nameInput) {
+      nameInput.addEventListener('input', function() {
+          let oldVal = this.value;
+          let newVal = oldVal.replace(/[^a-zA-Z\s]/g, '');
+          if (oldVal !== newVal) {
+              this.value = newVal;
+              fv.revalidateField('name');
+          }
+      });
+  }
+
+  // Force the mobile input to discard ALL alphabetes (numbers only max 10) instantly
+  const mobileInput = addGlobalEmployeeForm.querySelector('[name="mobile"]');
+  if (mobileInput) {
+      mobileInput.addEventListener('input', function() {
+          let oldVal = this.value;
+          let newVal = oldVal.replace(/[^0-9]/g, '');
+          if (newVal.length > 10) newVal = newVal.substring(0, 10);
+          if (oldVal !== newVal) {
+              this.value = newVal;
+              fv.revalidateField('mobile'); // Also re-validate if we forcefully changed it
+          }
+      });
+  }
+
+  // Force the account_no input to discard ALL alphabetes (numbers only) instantly
+  const accountNoInput = addGlobalEmployeeForm.querySelector('[name="account_no"]');
+  if (accountNoInput) {
+      accountNoInput.addEventListener('input', function() {
+          let oldVal = this.value;
+          let newVal = oldVal.replace(/[^0-9]/g, '');
+          if (oldVal !== newVal) {
+              this.value = newVal;
+              fv.revalidateField('account_no'); // Also re-validate if we forcefully changed it
+          }
+      });
+  }
 
   // Revalidate Select2 on change
   $('.select2').on('change', function() {
@@ -828,11 +887,11 @@ document.addEventListener('DOMContentLoaded', function () {
                   </div>
                   <div class="col-sm-6">
                     <label class="form-label" for="dob">Date of Birth</label>
-                    <input type="date" id="wizard_dob" name="dob" class="form-control" required />
+                    <input type="date" id="wizard_dob" name="dob" class="form-control" min="1970-01-01" max="2008-12-31" required />
                   </div>
                   <div class="col-sm-6">
                     <label class="form-label" for="joining_date">Date of Joining</label>
-                    <input type="date" id="wizard_joining_date" name="joining_date" class="form-control" required />
+                    <input type="date" id="wizard_joining_date" name="joining_date" class="form-control" min="1950-01-01" max="{{ date('Y-m-d') }}" required />
                   </div>
                   <div class="col-sm-12">
                     <label class="form-label" for="wizard_address">Address</label>
